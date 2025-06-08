@@ -221,6 +221,276 @@ export class PuppeteerManager {
     logger.info(`Screenshot saved to ${path}`);
   }
 
+  async takeComprehensiveScreenshots(fields: any[], screenshotDir: string): Promise<void> {
+    if (!this.page) {
+      throw new Error('Browser not launched');
+    }
+
+    logger.info(`Taking comprehensive screenshots for ${fields.length} form fields...`);
+    
+    // Scroll to top first
+    await this.page.evaluate(() => window.scrollTo(0, 0));
+    await this.page.waitForTimeout(500);
+    
+    // Take initial full page screenshot
+    const initialPath = `${screenshotDir}/01-initial-form.png`;
+    await this.page.screenshot({ path: initialPath, fullPage: true });
+    logger.info(`Initial form screenshot saved: ${initialPath}`);
+
+    // Take viewport screenshot at top
+    const viewportPath = `${screenshotDir}/02-current-viewport.png`;
+    await this.page.screenshot({ path: viewportPath, fullPage: false });
+    logger.info(`Current viewport screenshot saved: ${viewportPath}`);
+
+    // Find and get dimensions of the scrollable right panel container
+    const dimensions = await this.page.evaluate(() => {
+      // Find the scrollable container in the right panel
+      const rightPanelSelectors = [
+        '.right-panel',
+        '.form-panel', 
+        '.content-panel',
+        '[class*="panel"]',
+        '[class*="content"]',
+        '.main-content',
+        '#main-content'
+      ];
+      
+      let scrollableContainer = null;
+      
+      // Look for containers that might be scrollable in the right side
+      for (const selector of rightPanelSelectors) {
+        const containers = document.querySelectorAll(selector);
+        for (let j = 0; j < containers.length; j++) {
+          const container = containers[j];
+          const rect = container.getBoundingClientRect();
+          const style = window.getComputedStyle(container);
+          
+          // Check if it's in the right area and scrollable
+          if (rect.left > window.innerWidth * 0.3 && 
+              (style.overflow === 'auto' || style.overflow === 'scroll' || 
+               style.overflowY === 'auto' || style.overflowY === 'scroll' ||
+               container.scrollHeight > container.clientHeight)) {
+            scrollableContainer = container;
+            break;
+          }
+        }
+        if (scrollableContainer) break;
+      }
+      
+      // If no specific scrollable container found, look for any div with scroll in right area
+      if (!scrollableContainer) {
+        const allDivs = document.querySelectorAll('div');
+        for (let k = 0; k < allDivs.length; k++) {
+          const div = allDivs[k];
+          const rect = div.getBoundingClientRect();
+          if (rect.left > window.innerWidth * 0.3 && 
+              div.scrollHeight > div.clientHeight + 10) { // Some tolerance
+            scrollableContainer = div;
+            break;
+          }
+        }
+      }
+      
+      if (scrollableContainer) {
+        return {
+          hasScrollableContainer: true,
+          containerScrollHeight: scrollableContainer.scrollHeight,
+          containerClientHeight: scrollableContainer.clientHeight,
+          containerScrollTop: scrollableContainer.scrollTop,
+          containerRect: {
+            left: scrollableContainer.getBoundingClientRect().left,
+            top: scrollableContainer.getBoundingClientRect().top,
+            width: scrollableContainer.getBoundingClientRect().width,
+            height: scrollableContainer.getBoundingClientRect().height
+          },
+          pageHeight: scrollableContainer.scrollHeight,
+          viewportHeight: scrollableContainer.clientHeight,
+          pageWidth: window.innerWidth,
+          viewportWidth: window.innerWidth,
+          currentScroll: scrollableContainer.scrollTop
+        };
+      } else {
+        // Fallback to page scrolling
+        return {
+          hasScrollableContainer: false,
+          pageHeight: document.body.scrollHeight,
+          viewportHeight: window.innerHeight,
+          pageWidth: document.body.scrollWidth,
+          viewportWidth: window.innerWidth,
+          currentScroll: window.pageYOffset,
+          containerRect: undefined,
+          containerScrollHeight: undefined,
+          containerClientHeight: undefined,
+          containerScrollTop: undefined
+        };
+      }
+    });
+    
+    if (dimensions.hasScrollableContainer && dimensions.containerRect) {
+      logger.info(`Found scrollable container at (${dimensions.containerRect.left}, ${dimensions.containerRect.top}) with size ${dimensions.containerRect.width}x${dimensions.containerRect.height}`);
+      logger.info(`Container scroll: ${dimensions.containerScrollHeight}px total, ${dimensions.containerClientHeight}px visible`);
+    } else {
+      logger.info(`No scrollable container found, using page scroll: ${dimensions.pageWidth}x${dimensions.pageHeight}px`);
+    }
+    
+    // Calculate how many scroll steps we need
+    const viewportHeight = dimensions.viewportHeight;
+    const pageHeight = dimensions.pageHeight;
+    
+    // Check if scrolling is needed
+    const shouldScroll = pageHeight > viewportHeight + 50; // Need some tolerance
+    
+    if (shouldScroll) {
+      const overlapPercent = 0.2; // 20% overlap (scroll 80% of viewport each time)
+      const scrollDistance = Math.floor(viewportHeight * (1 - overlapPercent));
+      const totalScrollSteps = Math.ceil((pageHeight - viewportHeight) / scrollDistance);
+      
+      logger.info(`Container requires scrolling. Taking ${totalScrollSteps} additional screenshots with ${scrollDistance}px scroll steps`);
+      
+      for (let i = 0; i < totalScrollSteps; i++) {
+        const scrollTop = Math.min((i + 1) * scrollDistance, pageHeight - viewportHeight);
+        
+        logger.info(`Scrolling container to position: ${scrollTop}px`);
+        
+        if (dimensions.hasScrollableContainer) {
+          // Scroll the specific container
+          await this.page.evaluate((scroll) => {
+            // Find the same scrollable container again
+            const rightPanelSelectors = [
+              '.right-panel',
+              '.form-panel', 
+              '.content-panel',
+              '[class*="panel"]',
+              '[class*="content"]',
+              '.main-content',
+              '#main-content'
+            ];
+            
+            let scrollableContainer = null;
+            for (const selector of rightPanelSelectors) {
+              const containers = document.querySelectorAll(selector);
+              for (let j = 0; j < containers.length; j++) {
+          const container = containers[j];
+                const rect = container.getBoundingClientRect();
+                const style = window.getComputedStyle(container);
+                if (rect.left > window.innerWidth * 0.3 && 
+                    (style.overflow === 'auto' || style.overflow === 'scroll' || 
+                     style.overflowY === 'auto' || style.overflowY === 'scroll' ||
+                     container.scrollHeight > container.clientHeight)) {
+                  scrollableContainer = container;
+                  break;
+                }
+              }
+              if (scrollableContainer) break;
+            }
+            
+            if (!scrollableContainer) {
+              const allDivs = document.querySelectorAll('div');
+              for (let k = 0; k < allDivs.length; k++) {
+          const div = allDivs[k];
+                const rect = div.getBoundingClientRect();
+                if (rect.left > window.innerWidth * 0.3 && 
+                    div.scrollHeight > div.clientHeight + 10) {
+                  scrollableContainer = div;
+                  break;
+                }
+              }
+            }
+            
+            if (scrollableContainer) {
+              scrollableContainer.scrollTop = scroll;
+            }
+          }, scrollTop);
+        } else {
+          // Fallback to page scrolling
+          await this.page.evaluate((scroll) => {
+            window.scrollTo(0, scroll);
+          }, scrollTop);
+        }
+
+        // Wait for scroll to complete and any content to load
+        await this.page.waitForTimeout(1000);
+        
+        // Verify scroll position
+        const actualScroll = await this.page.evaluate((hasContainer) => {
+          if (hasContainer) {
+            // Get container scroll position
+            const containers = document.querySelectorAll('div');
+            for (let j = 0; j < containers.length; j++) {
+          const container = containers[j];
+              const rect = container.getBoundingClientRect();
+              if (rect.left > window.innerWidth * 0.3 && 
+                  container.scrollHeight > container.clientHeight + 10) {
+                return container.scrollTop;
+              }
+            }
+          }
+          return window.pageYOffset;
+        }, dimensions.hasScrollableContainer);
+        logger.info(`Actual scroll position: ${actualScroll}px`);
+
+        const screenshotIndex = i + 3; // Start from 03
+        const screenshotPath = `${screenshotDir}/${screenshotIndex.toString().padStart(2, '0')}-scroll-${actualScroll}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: false });
+        
+        logger.info(`Screenshot ${screenshotIndex} saved: ${screenshotPath} (container scroll: ${actualScroll}px)`);
+      }
+      
+      // Take one more screenshot at the very bottom of the container
+      if (dimensions.hasScrollableContainer) {
+        await this.page.evaluate(() => {
+          const containers = document.querySelectorAll('div');
+          for (let j = 0; j < containers.length; j++) {
+          const container = containers[j];
+            const rect = container.getBoundingClientRect();
+            if (rect.left > window.innerWidth * 0.3 && 
+                container.scrollHeight > container.clientHeight + 10) {
+              container.scrollTop = container.scrollHeight;
+              break;
+            }
+          }
+        });
+      } else {
+        await this.page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+        });
+      }
+      await this.page.waitForTimeout(1000);
+      
+      const bottomScroll = await this.page.evaluate(() => {
+        const containers = document.querySelectorAll('div');
+        for (let j = 0; j < containers.length; j++) {
+          const container = containers[j];
+          const rect = container.getBoundingClientRect();
+          if (rect.left > window.innerWidth * 0.3 && 
+              container.scrollHeight > container.clientHeight + 10) {
+            return container.scrollTop;
+          }
+        }
+        return window.pageYOffset;
+      });
+      const bottomPath = `${screenshotDir}/98-bottom-${bottomScroll}.png`;
+      await this.page.screenshot({ path: bottomPath, fullPage: false });
+      logger.info(`Bottom screenshot saved: ${bottomPath} (container scroll: ${bottomScroll}px)`);
+      
+    } else {
+      logger.info('Container fits in viewport - no additional scrolling needed');
+    }
+
+    // Scroll back to top
+    await this.page.evaluate(() => window.scrollTo(0, 0));
+    await this.page.waitForTimeout(300);
+
+    // Take a final full page screenshot to ensure we captured everything
+    const finalPath = `${screenshotDir}/99-final-full-page.png`;
+    await this.page.screenshot({ path: finalPath, fullPage: true });
+    logger.info(`Final full page screenshot saved: ${finalPath}`);
+
+    const totalScreenshots = pageHeight > viewportHeight ? Math.ceil((pageHeight - viewportHeight) / Math.floor(viewportHeight * 0.8)) + 4 : 3;
+    logger.info(`Comprehensive screenshot capture complete - ${totalScreenshots} screenshots taken`);
+    logger.info(`Field summary: ${fields.map(f => `${f.label || f.id} (${f.type})`).join(', ')}`);
+  }
+
   getPage(): Page {
     if (!this.page) {
       throw new Error('Browser not launched');

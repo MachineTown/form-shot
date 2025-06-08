@@ -19,15 +19,13 @@ program
   .option('-o, --output <path>', 'Output file path for test matrix', 'output/test-matrix.json')
   .option('-v, --viewport <size>', 'Browser viewport size (WxH)', '1024x768')
   .option('-w, --wait-for <ms>', 'Wait time after page load (milliseconds)', '3000')
-  .option('-s, --screenshot', 'Take screenshot during analysis', false)
   .action(async (url: string, options: any) => {
     try {
       const analyzeOptions: AnalyzeOptions = {
         url,
         output: options.output,
         viewport: options.viewport,
-        waitFor: parseInt(options.waitFor),
-        screenshot: options.screenshot
+        waitFor: parseInt(options.waitFor)
       };
       
       const analyzeCommand = new AnalyzeCommand();

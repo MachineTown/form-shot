@@ -88,5 +88,4 @@ export interface AnalyzeOptions {
   output?: string;
   viewport?: string;
   waitFor?: number;
-  screenshot?: boolean;
 }

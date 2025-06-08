@@ -81,10 +81,17 @@ export class FieldDetector {
         // Get label text from parent divs
         const label = extractLabelFromParent(element);
 
-        // Generate a unique selector
+        // Generate a unique selector with proper CSS escaping
         let selector = '';
         if (element.id) {
-          selector = `#${element.id}`;
+          // Use CSS.escape if available, otherwise fallback to basic escaping
+          try {
+            const escapedId = CSS.escape(element.id);
+            selector = `#${escapedId}`;
+          } catch (e) {
+            // Fallback: use attribute selector for problematic IDs
+            selector = `[id="${element.id}"]`;
+          }
         } else if (name) {
           selector = `[name="${name}"]`;
         } else {

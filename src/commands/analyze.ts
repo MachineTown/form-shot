@@ -28,12 +28,78 @@ export class AnalyzeCommand {
         logger.warn('Login attempt failed, proceeding without authentication:', error);
       }
       
-      // Take screenshot if requested
-      if (options.screenshot) {
-        const screenshotPath = path.join(process.cwd(), 'output', 'screenshots', 'form-analysis.png');
-        await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
-        await puppeteerManager.takeScreenshot(screenshotPath);
-      }
+      // Wait for page to fully load after login and allow for dynamic content
+      const page = puppeteerManager.getPage();
+      await page.waitForTimeout(5000);
+      
+      // Scroll down in right panel to trigger any lazy-loaded content
+      logger.info('Scrolling right panel to trigger dynamic content loading...');
+      await page.evaluate(() => {
+        // Find the scrollable container in the right panel
+        const rightPanelSelectors = [
+          '.right-panel',
+          '.form-panel', 
+          '.content-panel',
+          '[class*="panel"]',
+          '[class*="content"]',
+          '.main-content',
+          '#main-content'
+        ];
+        
+        let scrollableContainer = null;
+        for (const selector of rightPanelSelectors) {
+          const containers = document.querySelectorAll(selector);
+          for (let j = 0; j < containers.length; j++) {
+            const container = containers[j];
+            const rect = container.getBoundingClientRect();
+            const style = window.getComputedStyle(container);
+            if (rect.left > window.innerWidth * 0.3 && 
+                (style.overflow === 'auto' || style.overflow === 'scroll' || 
+                 style.overflowY === 'auto' || style.overflowY === 'scroll' ||
+                 container.scrollHeight > container.clientHeight)) {
+              scrollableContainer = container;
+              break;
+            }
+          }
+          if (scrollableContainer) break;
+        }
+        
+        if (!scrollableContainer) {
+          const allDivs = document.querySelectorAll('div');
+          for (let k = 0; k < allDivs.length; k++) {
+          const div = allDivs[k];
+            const rect = div.getBoundingClientRect();
+            if (rect.left > window.innerWidth * 0.3 && 
+                div.scrollHeight > div.clientHeight + 10) {
+              scrollableContainer = div;
+              break;
+            }
+          }
+        }
+        
+        if (scrollableContainer) {
+          scrollableContainer.scrollTop = scrollableContainer.scrollHeight;
+        } else {
+          window.scrollTo(0, document.body.scrollHeight);
+        }
+      });
+      await page.waitForTimeout(2000);
+      
+      // Scroll back to top
+      await page.evaluate(() => {
+        const allDivs = document.querySelectorAll('div');
+        for (let k = 0; k < allDivs.length; k++) {
+          const div = allDivs[k];
+          const rect = div.getBoundingClientRect();
+          if (rect.left > window.innerWidth * 0.3 && 
+              div.scrollHeight > div.clientHeight + 10) {
+            div.scrollTop = 0;
+            return;
+          }
+        }
+        window.scrollTo(0, 0);
+      });
+      await page.waitForTimeout(1000);
       
       // Detect form fields
       const fieldDetector = new FieldDetector(puppeteerManager.getPage());
@@ -42,8 +108,18 @@ export class AnalyzeCommand {
       
       if (fields.length === 0) {
         logger.warn('No form fields detected on the page');
+        // Still take a screenshot to see what's on the page
+        const screenshotPath = path.join(process.cwd(), 'output', 'screenshots', 'no-fields-detected.png');
+        await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
+        await puppeteerManager.takeScreenshot(screenshotPath);
         return;
       }
+      
+      // Always take comprehensive screenshots covering all form fields
+      logger.info(`Taking screenshots to cover all ${fields.length} form fields...`);
+      const screenshotDir = path.join(process.cwd(), 'output', 'screenshots');
+      await fs.mkdir(screenshotDir, { recursive: true });
+      await puppeteerManager.takeComprehensiveScreenshots(fields, screenshotDir);
       
       // Generate test cases
       const testGenerator = new TestCaseGenerator();
