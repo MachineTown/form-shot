@@ -1,0 +1,27 @@
+{
+  "name": "form-shot",
+  "version": "1.0.0",
+  "description": "Automated form analysis and test case generation tool",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "analyze": "ts-node src/index.ts analyze"
+  },
+  "keywords": ["form", "testing", "puppeteer", "automation"],
+  "author": "MachineTown",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "puppeteer": "^21.6.1",
+    "winston": "^3.11.0",
+    "joi": "^17.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}
