@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  form-shot:
+    build: .
+    volumes:
+      - ./output:/app/output
+    environment:
+      - NODE_ENV=production
+    networks:
+      - form-shot-network
+
+networks:
+  form-shot-network:
+    driver: bridge
