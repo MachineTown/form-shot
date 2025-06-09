@@ -155,8 +155,39 @@ export class SurveyFormDetector {
       }
 
       function extractQuestionNumber(text: string): string {
-        const match = text.match(/^(\\d+(?:\\.\\d+)*\\.?)\\s*/);
+        // Match patterns like "1.", "2.3", "4.5.6", etc. at the start of text
+        const match = text.match(/^(\d+(?:\.\d+)*\.?)\s*/);
         return match ? match[1] : '';
+      }
+
+      function cleanQuestionText(text: string, choices: string[]): { cleanText: string; isRequired: boolean } {
+        let cleanText = text;
+        
+        // Remove question number from the beginning
+        cleanText = cleanText.replace(/^\d+(?:\.\d+)*\.?\s*/, '');
+        
+        // Remove choice values from the end of question text first (before checking for *)
+        if (choices && choices.length > 0) {
+          // Remove choices from the end, trying longest matches first
+          const sortedChoices = [...choices].sort((a, b) => b.length - a.length);
+          for (const choice of sortedChoices) {
+            const escapedChoice = choice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Remove choice from anywhere in the text (not just end) with word boundaries
+            const regex = new RegExp('\\s*\\b' + escapedChoice + '\\b\\s*', 'gi');
+            cleanText = cleanText.replace(regex, ' ');
+          }
+          
+          // Clean up multiple spaces
+          cleanText = cleanText.replace(/\s+/g, ' ').trim();
+        }
+        
+        // Check if question is required (ends with *) - do this after choice removal
+        const isRequired = cleanText.trim().endsWith('*');
+        if (isRequired) {
+          cleanText = cleanText.replace(/\s*\*\s*$/, '').trim();
+        }
+        
+        return { cleanText: cleanText.trim(), isRequired };
       }
 
       function getInputType(input: Element): string {
@@ -228,9 +259,10 @@ export class SurveyFormDetector {
 
       cardBoxElements.forEach((cardBox, index) => {
         // Extract question text and number from the CardBox
-        const questionText = extractQuestionText(cardBox);
-        const questionNumber = extractQuestionNumber(questionText);
-        const isRequired = questionText.endsWith('*');
+        const rawQuestionText = extractQuestionText(cardBox);
+        const questionNumber = extractQuestionNumber(rawQuestionText);
+        
+        console.log(`Question ${index + 1}: Raw text="${rawQuestionText.substring(0, 50)}..." Number="${questionNumber}"`);
         
         // Find all inputs within this CardBox
         const questionInputs = cardBox.querySelectorAll('input, select, textarea');
@@ -283,22 +315,28 @@ export class SurveyFormDetector {
           }
         }
 
+        // Clean the question text by removing number, choices, and handling required indicator
+        const { cleanText, isRequired } = cleanQuestionText(rawQuestionText, choices);
+
         // Only add if we have meaningful question text or a question number
-        if (questionText.length > 3 || questionNumber.length > 0) {
+        if (cleanText.length > 3 || questionNumber.length > 0) {
+          const cardBoxSelector = generateCardBoxSelector(cardBox, index, questionNumber);
+          console.log(`Question ${index + 1}: Clean text="${cleanText}" Required=${isRequired}`);
+          
           fieldGroups.push({
             questionNumber,
-            questionText: questionText.replace(/\\*$/, '').trim(),
+            questionText: cleanText,
             inputType,
             isRequired,
             choices: choices.length > 0 ? choices : undefined,
             selector: elementSelector,
             screenshotPath: '', // Will be filled when taking screenshots
-            cardBoxSelector: generateCardBoxSelector(cardBox, index) // Add selector for the CardBox container
+            cardBoxSelector: cardBoxSelector
           });
         }
       });
 
-      function generateCardBoxSelector(cardBox: Element, index: number): string {
+      function generateCardBoxSelector(cardBox: Element, index: number, questionNumber: string): string {
         if (cardBox.id) {
           try {
             return `#${CSS.escape(cardBox.id)}`;
@@ -307,18 +345,12 @@ export class SurveyFormDetector {
           }
         }
         
-        if (cardBox.className) {
-          const classes = cardBox.className.split(' ').filter(c => c.length > 0);
-          const cardBoxClass = classes.find(c => c.startsWith('CardBox'));
-          if (cardBoxClass) {
-            return `.${cardBoxClass}`;
-          }
-          if (classes.length > 0) {
-            return `.${classes.join('.')}`;
-          }
-        }
+        // Store a reference to the CardBox element for later use
+        // We'll create a unique attribute to identify this specific CardBox
+        const uniqueId = `cardbox-q-${questionNumber.replace('.', '')}`;
+        cardBox.setAttribute('data-question-id', uniqueId);
         
-        return `[class*="CardBox"]:nth-of-type(${index + 1})`;
+        return `[data-question-id="${uniqueId}"]`;
       }
 
       return fieldGroups;
@@ -328,24 +360,41 @@ export class SurveyFormDetector {
     console.log(`Taking screenshots for ${fields.length} questions`);
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
-      const screenshotPath = await this.takeFieldScreenshot(page, field.cardBoxSelector, i, tuple);
+      // Use the question number instead of loop index for screenshot naming
+      const questionNum = field.questionNumber.replace('.', '');
+      const screenshotPath = await this.takeFieldScreenshot(page, field.cardBoxSelector, questionNum, tuple);
       field.screenshotPath = screenshotPath;
     }
 
     return fields;
   }
 
-  private async takeFieldScreenshot(page: Page, cardBoxSelector: string, index: number, tuple: SurveyTuple): Promise<string> {
+  private async takeFieldScreenshot(page: Page, cardBoxSelector: string, questionNumber: string, tuple: SurveyTuple): Promise<string> {
     try {
+      console.log(`Taking screenshot for question ${questionNumber} with selector: ${cardBoxSelector}`);
       const cardBoxElement = await page.$(cardBoxSelector);
-      if (!cardBoxElement) return '';
+      if (!cardBoxElement) {
+        console.warn(`CardBox element not found for selector: ${cardBoxSelector}`);
+        return '';
+      }
 
-      // Scroll CardBox element into view
-      await cardBoxElement.scrollIntoView();
-      await page.waitForTimeout(500);
+      // Scroll CardBox element into view and wait for it to be visible
+      await page.evaluate((selector) => {
+        const element = document.querySelector(selector);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, cardBoxSelector);
+      await page.waitForTimeout(1000);
+      
+      // Wait for element to be visible
+      await page.waitForFunction((selector) => {
+        const element = document.querySelector(selector) as HTMLElement;
+        return element && element.offsetHeight > 0;
+      }, {}, cardBoxSelector);
 
-      // Generate screenshot filename
-      const filename = `field_${index + 1}_${tuple.customerId}_${tuple.studyId}.png`;
+      // Generate screenshot filename using question number
+      const filename = `question_${questionNumber}_${tuple.customerId}_${tuple.studyId}.png`;
       
       // Create output directory if it doesn't exist
       const outputDir = join('/app/output', tuple.customerId, tuple.studyId, tuple.packageName, tuple.language, tuple.version);
@@ -359,10 +408,11 @@ export class SurveyFormDetector {
       
       // Take screenshot of the entire CardBox container
       await cardBoxElement.screenshot({ path: screenshotPath });
+      console.log(`Screenshot saved: ${filename}`);
 
       return filename;
     } catch (error) {
-      console.warn(`Failed to take screenshot for field ${index + 1}:`, error);
+      console.warn(`Failed to take screenshot for question ${questionNumber}:`, error);
       return '';
     }
   }

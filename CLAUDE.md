@@ -25,3 +25,9 @@
 - The ownership of the output files will be for the same user as executed the tool.
 - The tool will be written in typescript and executed in the latest LTS node version.
 - Use puppeteer to drive the browser, identify form fields and take screenshots
+
+*** Build instructions ***
+use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
+
+example run command: docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+
