@@ -1,6 +1,6 @@
 ***Requirements***
 - Build a tool that given a URL and a reference tuple string will open the web page (assume no auth step), analyse the form fields on the right hand panel.
-- The right hand panel is scrollable, ensure that the tool scrolls to the bottom to see all the form fields. Store the height of viewport that would be needed to see the whole form without scrolling.
+- The right hand panel is scrollable, ensure that the tool scrolls to the bottom to see all the form fields. Store the height of viewport that would be needed to see the whole form without scrolling. Only include the panel within the div with id survey-body-container in the analysis of the form fields.
 - For each form identify the long title and short name from the top of the form.
 - For each form field (question), identify and record in a JSON structure:
     - question number string e.g. 1. or 1.2 or 2.3.1
@@ -9,7 +9,7 @@
     - If the question text has a * at the end of it, it is a required field. Record this as a boolean.
     - If the input type is a radio or a dropdown, then record the choices
     - Take a screen shot of the whole <div> that contains the question text and input fields - reference this file name in the JSON for the field
-- Each question is framed by a box identified by a div with a class that starts with CardBox (question number, question text, input fields (radios within frame are choices) ). Only include the panel within the survey-body-container div in the analysis of the form fields   
+- Each question is framed by a box identified by a div with a class that starts with CardBox (question number, question text, input fields (radios within frame are choices) ).   
 - Example forms can be found at the following URLS:
     - https://main.qa.castoredc.org/survey/X9PAYLDQ
 - Input tuple string in this format: [customer_id, study_id, package_name, language, version]

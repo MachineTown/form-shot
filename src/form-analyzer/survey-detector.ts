@@ -8,6 +8,7 @@ export class SurveyFormDetector {
   async detectSurveyForm(page: Page, tuple: SurveyTuple): Promise<SurveyForm> {
     // Find right panel and get its dimensions
     const rightPanel = await this.findRightPanel(page);
+    console.log(`Using container selector: ${rightPanel}`);
     
     // Calculate viewport height needed for full form
     const viewportHeight = await this.calculateRequiredViewportHeight(page, rightPanel);
@@ -32,45 +33,21 @@ export class SurveyFormDetector {
   }
 
   private async findRightPanel(page: Page): Promise<string> {
-    // Look specifically for survey-body-container as specified in requirements
-    const surveyBodyContainer = await page.$('.survey-body-container');
+    // Look specifically for survey-body-container by ID as specified in requirements
+    const surveyBodyContainer = await page.$('#survey-body-container');
     if (surveyBodyContainer) {
+      return '#survey-body-container';
+    }
+
+    // Fallback to class-based selector if ID not found
+    const surveyBodyContainerByClass = await page.$('.survey-body-container');
+    if (surveyBodyContainerByClass) {
       return '.survey-body-container';
     }
 
-    // Fallback to other containers that might contain the survey
-    const selectors = [
-      '[class*="survey-body"]',
-      '[class*="survey-container"]',
-      '[class*="form-container"]',
-      '[class*="right"]',
-      '[class*="panel"]'
-    ];
-
-    for (const selector of selectors) {
-      const elements = await page.$$(selector);
-      
-      for (let i = 0; i < elements.length; i++) {
-        const element = elements[i];
-        const rect = await element.boundingBox();
-        
-        if (rect && rect.x > page.viewport()!.width * 0.3) {
-          const elementSelector = await page.evaluate((el, index, sel) => {
-            // Try to create a unique selector
-            if (el.id) return `#${el.id}`;
-            if (el.className) {
-              const classes = el.className.split(' ').filter(c => c.length > 0);
-              if (classes.length > 0) return `.${classes.join('.')}`;
-            }
-            return `${sel}:nth-child(${index + 1})`;
-          }, element, i, selector);
-          
-          return elementSelector;
-        }
-      }
-    }
+    console.warn('survey-body-container not found, analysis may include irrelevant fields');
     
-    // Fallback to body if no survey container found
+    // Final fallback to body if no survey container found
     return 'body';
   }
 
@@ -87,16 +64,20 @@ export class SurveyFormDetector {
     await page.evaluate((selector) => {
       const element = document.querySelector(selector);
       if (element && element.scrollHeight > element.clientHeight) {
-        // Scroll the container to bottom
+        // Scroll the survey-body-container to bottom to reveal all form fields
         element.scrollTop = element.scrollHeight;
+        console.log(`Scrolled ${selector} to bottom: ${element.scrollTop}px of ${element.scrollHeight}px`);
       } else {
-        // Fallback to page scroll
-        window.scrollTo(0, document.body.scrollHeight);
+        console.log(`${selector} does not need scrolling or not found`);
+        // Only scroll page if survey-body-container wasn't found
+        if (selector === 'body') {
+          window.scrollTo(0, document.body.scrollHeight);
+        }
       }
     }, rightPanelSelector);
 
-    // Wait for any lazy-loaded content
-    await page.waitForTimeout(2000);
+    // Wait for any lazy-loaded content to appear after scrolling
+    await page.waitForTimeout(3000);
   }
 
   private async extractFormTitles(page: Page): Promise<{ longTitle: string; shortName: string }> {
@@ -235,10 +216,14 @@ export class SurveyFormDetector {
       }
 
       const rightPanel = document.querySelector(selector);
-      if (!rightPanel) return [];
+      if (!rightPanel) {
+        console.log(`Container not found: ${selector}`);
+        return [];
+      }
 
       // Find all CardBox question containers within the survey-body-container
       const cardBoxElements = rightPanel.querySelectorAll('[class*="CardBox"]');
+      console.log(`Found ${cardBoxElements.length} CardBox elements in ${selector}`);
       const fieldGroups: any[] = [];
 
       cardBoxElements.forEach((cardBox, index) => {
