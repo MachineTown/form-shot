@@ -1,5 +1,6 @@
 import { Page } from 'puppeteer';
 import { SurveyForm, SurveyField, SurveyTuple } from '../utils/types';
+import { logger } from '../utils/logger';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
 
@@ -8,7 +9,7 @@ export class SurveyFormDetector {
   async detectSurveyForm(page: Page, tuple: SurveyTuple): Promise<SurveyForm> {
     // Find right panel and get its dimensions
     const rightPanel = await this.findRightPanel(page);
-    console.log(`Using container selector: ${rightPanel}`);
+    logger.info(`Using container selector: ${rightPanel}`);
     
     // Calculate viewport height needed for full form
     const viewportHeight = await this.calculateRequiredViewportHeight(page, rightPanel);
@@ -45,7 +46,7 @@ export class SurveyFormDetector {
       return '.survey-body-container';
     }
 
-    console.warn('survey-body-container not found, analysis may include irrelevant fields');
+    logger.warn('survey-body-container not found, analysis may include irrelevant fields');
     
     // Final fallback to body if no survey container found
     return 'body';
@@ -66,9 +67,7 @@ export class SurveyFormDetector {
       if (element && element.scrollHeight > element.clientHeight) {
         // Scroll the survey-body-container to bottom to reveal all form fields
         element.scrollTop = element.scrollHeight;
-        console.log(`Scrolled ${selector} to bottom: ${element.scrollTop}px of ${element.scrollHeight}px`);
       } else {
-        console.log(`${selector} does not need scrolling or not found`);
         // Only scroll page if survey-body-container wasn't found
         if (selector === 'body') {
           window.scrollTo(0, document.body.scrollHeight);
@@ -78,6 +77,7 @@ export class SurveyFormDetector {
 
     // Wait for any lazy-loaded content to appear after scrolling
     await page.waitForTimeout(3000);
+    logger.debug('Completed scrolling and waiting for lazy-loaded content');
   }
 
   private async extractFormTitles(page: Page): Promise<{ longTitle: string; shortName: string }> {
@@ -248,21 +248,17 @@ export class SurveyFormDetector {
 
       const rightPanel = document.querySelector(selector);
       if (!rightPanel) {
-        console.log(`Container not found: ${selector}`);
         return [];
       }
 
       // Find all CardBox question containers within the survey-body-container
       const cardBoxElements = rightPanel.querySelectorAll('[class*="CardBox"]');
-      console.log(`Found ${cardBoxElements.length} CardBox elements in ${selector}`);
       const fieldGroups: any[] = [];
 
       cardBoxElements.forEach((cardBox, index) => {
         // Extract question text and number from the CardBox
         const rawQuestionText = extractQuestionText(cardBox);
         const questionNumber = extractQuestionNumber(rawQuestionText);
-        
-        console.log(`Question ${index + 1}: Raw text="${rawQuestionText.substring(0, 50)}..." Number="${questionNumber}"`);
         
         // Find all inputs within this CardBox
         const questionInputs = cardBox.querySelectorAll('input, select, textarea');
@@ -321,7 +317,6 @@ export class SurveyFormDetector {
         // Only add if we have meaningful question text or a question number
         if (cleanText.length > 3 || questionNumber.length > 0) {
           const cardBoxSelector = generateCardBoxSelector(cardBox, index, questionNumber);
-          console.log(`Question ${index + 1}: Clean text="${cleanText}" Required=${isRequired}`);
           
           fieldGroups.push({
             questionNumber,
@@ -356,8 +351,10 @@ export class SurveyFormDetector {
       return fieldGroups;
     }, rightPanelSelector);
 
+    logger.info(`Found ${fields.length} survey questions`);
+
     // Take individual screenshots for each field
-    console.log(`Taking screenshots for ${fields.length} questions`);
+    logger.info(`Taking screenshots for ${fields.length} questions`);
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
       // Use the question number instead of loop index for screenshot naming
@@ -371,10 +368,10 @@ export class SurveyFormDetector {
 
   private async takeFieldScreenshot(page: Page, cardBoxSelector: string, questionNumber: string, tuple: SurveyTuple): Promise<string> {
     try {
-      console.log(`Taking screenshot for question ${questionNumber} with selector: ${cardBoxSelector}`);
+      logger.debug(`Taking screenshot for question ${questionNumber} with selector: ${cardBoxSelector}`);
       const cardBoxElement = await page.$(cardBoxSelector);
       if (!cardBoxElement) {
-        console.warn(`CardBox element not found for selector: ${cardBoxSelector}`);
+        logger.warn(`CardBox element not found for selector: ${cardBoxSelector}`);
         return '';
       }
 
@@ -401,18 +398,18 @@ export class SurveyFormDetector {
       try {
         mkdirSync(outputDir, { recursive: true });
       } catch (error) {
-        console.warn('Failed to create screenshot directory:', error);
+        logger.warn('Failed to create screenshot directory:', error);
       }
       
       const screenshotPath = join(outputDir, filename);
       
       // Take screenshot of the entire CardBox container
       await cardBoxElement.screenshot({ path: screenshotPath });
-      console.log(`Screenshot saved: ${filename}`);
+      logger.debug(`Screenshot saved: ${filename}`);
 
       return filename;
     } catch (error) {
-      console.warn(`Failed to take screenshot for question ${questionNumber}:`, error);
+      logger.error(`Failed to take screenshot for question ${questionNumber}:`, error);
       return '';
     }
   }

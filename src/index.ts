@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { analyzeSurvey } from './commands/analyze';
 import { SurveyTuple } from './utils/types';
+import { logger } from './utils/logger';
 
 const program = new Command();
 
@@ -20,13 +21,12 @@ program
     try {
       // Parse the tuple string
       const tuple = parseTupleString(tupleString);
-      console.log(`Starting analysis of ${url}`);
-      console.log(`Tuple: ${JSON.stringify(tuple)}`);
+      logger.info(`Starting analysis of ${url}`);
+      logger.info(`Tuple: ${JSON.stringify(tuple)}`);
       
       await analyzeSurvey(url, tuple);
-      console.log('Analysis completed successfully');
     } catch (error) {
-      console.error('Analysis failed:', error);
+      logger.error('Analysis failed:', error);
       process.exit(1);
     }
   });
