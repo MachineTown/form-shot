@@ -4,8 +4,6 @@ import { Command } from 'commander';
 import { analyzeSurvey } from './commands/analyze';
 import { uploadToFirestore, queryFirestore } from './commands/upload';
 import { 
-  exportTestDataForReview, 
-  importReviewedTestData, 
   generatePatternStats,
   exportUnknownFields,
   queryTestCases,
@@ -70,32 +68,7 @@ program
     }
   });
 
-program
-  .command('export-for-review')
-  .description('Export test data for UI review')
-  .argument('<analysis-json>', 'Path to analysis.json file')
-  .action(async (analysisJsonPath: string) => {
-    try {
-      await exportTestDataForReview(analysisJsonPath);
-    } catch (error) {
-      logger.error('Export for review failed:', error);
-      process.exit(1);
-    }
-  });
 
-program
-  .command('import-reviewed')
-  .description('Import reviewed test data back to analysis')
-  .argument('<reviewed-json>', 'Path to reviewed test data JSON file')
-  .argument('<original-analysis>', 'Path to original analysis.json file')
-  .action(async (reviewedJsonPath: string, originalAnalysisPath: string) => {
-    try {
-      await importReviewedTestData(reviewedJsonPath, originalAnalysisPath);
-    } catch (error) {
-      logger.error('Import reviewed data failed:', error);
-      process.exit(1);
-    }
-  });
 
 program
   .command('pattern-stats')
