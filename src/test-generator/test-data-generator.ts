@@ -484,7 +484,7 @@ export class TestDataGenerator {
     const testCases: TestCase[] = [];
     const choices = field.choices;
 
-    // Generate test cases for each choice position
+    // Generate test cases for each choice position only
     choices.forEach((choice, index) => {
       testCases.push({
         id: `choice_${field.questionNumber.replace('.', '_')}_${index}`,
@@ -511,90 +511,6 @@ export class TestDataGenerator {
         }
       });
     });
-
-    // Add boundary cases
-    if (choices.length > 2) {
-      // First choice (boundary)
-      testCases.push({
-        id: `boundary_first_${field.questionNumber.replace('.', '_')}`,
-        type: 'boundary',
-        value: '0',
-        position: 0,
-        description: 'First choice (boundary case)',
-        source: 'generated',
-        provenance: {
-          createdBy: 'system',
-          createdAt: new Date().toISOString(),
-          generator: {
-            algorithm: 'boundary_generator',
-            version: '1.0.0',
-            template: detection.template || 'choice_based_v1',
-            confidence: detection.confidence
-          },
-          modifications: []
-        },
-        status: 'draft',
-        quality: {
-          confidence: detection.confidence,
-          reviewCount: 0
-        }
-      });
-
-      // Last choice (boundary)
-      testCases.push({
-        id: `boundary_last_${field.questionNumber.replace('.', '_')}`,
-        type: 'boundary',
-        value: (choices.length - 1).toString(),
-        position: -1, // -1 indicates last position
-        description: 'Last choice (boundary case)',
-        source: 'generated',
-        provenance: {
-          createdBy: 'system',
-          createdAt: new Date().toISOString(),
-          generator: {
-            algorithm: 'boundary_generator',
-            version: '1.0.0',
-            template: detection.template || 'choice_based_v1',
-            confidence: detection.confidence
-          },
-          modifications: []
-        },
-        status: 'draft',
-        quality: {
-          confidence: detection.confidence,
-          reviewCount: 0
-        }
-      });
-
-      // Middle choice if odd number of choices
-      if (choices.length % 2 === 1) {
-        const middleIndex = Math.floor(choices.length / 2);
-        testCases.push({
-          id: `middle_${field.questionNumber.replace('.', '_')}`,
-          type: 'valid',
-          value: middleIndex.toString(),
-          position: middleIndex,
-          description: 'Middle choice',
-          source: 'generated',
-          provenance: {
-            createdBy: 'system',
-            createdAt: new Date().toISOString(),
-            generator: {
-              algorithm: 'middle_choice_generator',
-              version: '1.0.0',
-              template: detection.template || 'choice_based_v1',
-              confidence: detection.confidence
-            },
-            modifications: []
-          },
-          status: 'draft',
-          quality: {
-            confidence: detection.confidence,
-            reviewCount: 0
-          }
-        });
-      }
-    }
 
     return testCases;
   }
