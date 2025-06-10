@@ -92,3 +92,21 @@ export async function queryFirestore(customerId?: string, studyId?: string, limi
     throw error;
   }
 }
+
+export async function clearFirestore(): Promise<void> {
+  const firestoreService = new FirestoreService();
+  
+  try {
+    logger.info('Starting to clear all Firestore data...');
+    
+    // Ask for confirmation in production
+    logger.warn('⚠️  WARNING: This will permanently delete ALL survey analyses and screenshots from Firestore!');
+    
+    await firestoreService.clearAllData();
+    
+    logger.info('✅ Successfully cleared all Firestore data');
+  } catch (error) {
+    logger.error('❌ Failed to clear Firestore:', error);
+    throw error;
+  }
+}

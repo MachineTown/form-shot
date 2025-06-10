@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { analyzeSurvey } from './commands/analyze';
-import { uploadToFirestore, queryFirestore } from './commands/upload';
+import { uploadToFirestore, queryFirestore, clearFirestore } from './commands/upload';
 import { 
   generatePatternStats,
   exportUnknownFields,
@@ -64,6 +64,18 @@ program
       await queryFirestore(options.customer, options.study, limit);
     } catch (error) {
       logger.error('Query failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('clear')
+  .description('Clear all data from Firestore (WARNING: This is irreversible!)')
+  .action(async () => {
+    try {
+      await clearFirestore();
+    } catch (error) {
+      logger.error('Clear failed:', error);
       process.exit(1);
     }
   });

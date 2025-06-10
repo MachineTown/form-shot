@@ -498,4 +498,104 @@ export class FirestoreService {
       averageTestCasesPerField: Math.round(totalTestCases / fieldsWithTestData.length * 100) / 100
     };
   }
+
+  async clearAllData(): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    try {
+      logger.info('Starting to clear all Firestore data...');
+
+      // Clear survey-analyses collection and all subcollections
+      await this.clearCollection('survey-analyses');
+      
+      // Clear Cloud Storage screenshots
+      await this.clearStorageFolder('survey-screenshots');
+
+      logger.info('Successfully cleared all Firestore data and storage');
+    } catch (error) {
+      logger.error('Failed to clear Firestore data:', error);
+      throw error;
+    }
+  }
+
+  private async clearCollection(collectionName: string): Promise<void> {
+    const collectionRef = this.db.collection(collectionName);
+    const snapshot = await collectionRef.get();
+
+    logger.info(`Found ${snapshot.size} documents in ${collectionName} collection`);
+
+    if (snapshot.empty) {
+      logger.info(`Collection ${collectionName} is already empty`);
+      return;
+    }
+
+    // Process documents in batches
+    const batchSize = 500;
+    const batches: admin.firestore.DocumentSnapshot[][] = [];
+    
+    for (let i = 0; i < snapshot.docs.length; i += batchSize) {
+      batches.push(snapshot.docs.slice(i, i + batchSize));
+    }
+
+    for (const [batchIndex, batch] of batches.entries()) {
+      logger.info(`Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} documents)`);
+      
+      for (const doc of batch) {
+        // Clear subcollections first
+        await this.clearSubcollections(doc.ref);
+        
+        // Delete the document
+        await doc.ref.delete();
+      }
+    }
+
+    logger.info(`Cleared ${snapshot.size} documents from ${collectionName} collection`);
+  }
+
+  private async clearSubcollections(docRef: admin.firestore.DocumentReference): Promise<void> {
+    const subcollections = await docRef.listCollections();
+    
+    for (const subcollection of subcollections) {
+      const snapshot = await subcollection.get();
+      
+      for (const doc of snapshot.docs) {
+        // Recursively clear nested subcollections
+        await this.clearSubcollections(doc.ref);
+        await doc.ref.delete();
+      }
+    }
+  }
+
+  private async clearStorageFolder(folderPath: string): Promise<void> {
+    try {
+      const bucket = this.storage.bucket();
+      const [files] = await bucket.getFiles({ prefix: folderPath });
+      
+      logger.info(`Found ${files.length} files in storage folder: ${folderPath}`);
+      
+      if (files.length === 0) {
+        logger.info(`Storage folder ${folderPath} is already empty`);
+        return;
+      }
+
+      // Delete files in batches
+      const batchSize = 100;
+      for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.all(batch.map(file => file.delete()));
+        logger.info(`Deleted ${batch.length} files (${i + batch.length}/${files.length})`);
+      }
+
+      logger.info(`Cleared ${files.length} files from storage folder: ${folderPath}`);
+    } catch (error: any) {
+      if (error.code === 404) {
+        logger.info(`Storage folder ${folderPath} does not exist`);
+      } else {
+        logger.error(`Failed to clear storage folder ${folderPath}:`, error);
+        throw error;
+      }
+    }
+  }
 }

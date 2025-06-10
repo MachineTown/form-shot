@@ -7,8 +7,14 @@ An automated survey form analysis tool that captures form fields, screenshots, a
 - **Automated Form Detection**: Analyzes survey forms in web pages, focusing on the survey-body-container
 - **Field Analysis**: Extracts question numbers, text, input types, required fields, and choices
 - **Screenshot Capture**: Takes individual screenshots of each form field
-- **Clean Data Processing**: Removes question numbers, choice values, and handles required field indicators
+- **Intelligent Test Data Generation**: 
+  - Position-based test cases for radio buttons/dropdowns (language independent)
+  - Smart type detection for text fields (email, phone, name, age, etc.)
+  - Varying length responses for text areas
+  - Provenance tracking (generated, human-entered, hybrid)
 - **Cloud Integration**: Uploads analysis results and screenshots to Firestore and Firebase Storage
+- **Sub-collection Architecture**: Stores test cases in Firestore sub-collections for scalable querying
+- **Test Case Management**: Update status, track reviews, and generate statistics
 - **Containerized**: Runs completely within Docker with no local dependencies
 
 ## Prerequisites
@@ -56,8 +62,7 @@ docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query 
 
 ## Command Reference
 
-### Analysis Command
-
+### 1. Analyze Survey (with automatic test data generation)
 ```bash
 docker run --rm -v ./output:/app/output form-shot-runtime analyze <URL> <TUPLE>
 ```
@@ -70,8 +75,7 @@ Example:
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
 ```
 
-### Upload Command
-
+### 2. Upload Analysis to Firestore (includes test data)
 ```bash
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload <ANALYSIS_JSON_PATH>
 ```
@@ -81,8 +85,7 @@ Example:
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 ```
 
-### Query Command
-
+### 3. Query Analyses from Firestore
 ```bash
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query [OPTIONS]
 ```
@@ -101,26 +104,133 @@ docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query 
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query --customer PXL_KISQ --limit 3
 ```
 
-## Complete Workflow Example
-
-Here's a complete example using the SF-36 survey:
-
+### 4. Query Test Cases from Firestore (sub-collection queries)
 ```bash
-# Step 1: Analyze the survey form
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases [OPTIONS]
+```
+
+Options:
+- `--analysis <analysisId>`: Filter by analysis ID
+- `--customer <customerId>`: Filter by customer ID
+- `--study <studyId>`: Filter by study ID
+- `--status <status>`: Filter by status (draft, approved, rejected, needs_review)
+- `--source <source>`: Filter by source (generated, human, hybrid)
+- `--limit <number>`: Limit number of results (default: 20)
+
+Examples:
+```bash
+# Query test cases by status
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --customer PXL_KISQ --status draft --limit 10
+
+# Query specific analysis test cases
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --analysis PXL_KISQ_qa-test_sf36-gad7_en_v1 --status draft
+```
+
+### 5. Get Complete Analysis with Test Cases
+```bash
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime get-analysis <ANALYSIS_ID>
+```
+
+Example:
+```bash
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime get-analysis PXL_KISQ_qa-test_sf36-gad7_en_v1
+```
+
+### 6. Update Individual Test Case Status
+```bash
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime update-test-case <ANALYSIS_ID> <FIELD_ID> <TEST_CASE_ID> <STATUS> [OPTIONS]
+```
+
+Options:
+- `--reviewer <reviewerId>`: Reviewer ID
+
+Example:
+```bash
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime update-test-case PXL_KISQ_qa-test_sf36-gad7_en_v1 q1_ choice_1__0 approved --reviewer user123
+```
+
+### 7. Generate Pattern Statistics
+```bash
+docker run --rm -v ./output:/app/output form-shot-runtime pattern-stats
+```
+
+### 8. Export Unknown Fields for Classification
+```bash
+docker run --rm -v ./output:/app/output form-shot-runtime export-unknown
+```
+
+### 9. Clear All Firestore Data (⚠️ WARNING: Irreversible!)
+```bash
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime clear
+```
+
+This will permanently delete:
+- All survey analyses from Firestore
+- All test case subcollections
+- All screenshots from Firebase Storage
+
+## Complete Workflow Examples
+
+### Basic Workflow (Analyze + Upload)
+```bash
+# Step 1: Analyze survey (now includes automatic test data generation)
 docker run --rm -v ./output:/app/output form-shot-runtime analyze \
   https://main.qa.castoredc.org/survey/X9PAYLDQ \
   PXL_KISQ,qa-test,sf36-gad7,en,v1
 
-# Step 2: Upload results to Firestore (requires service account)
+# Step 2: Upload results (test cases stored in sub-collections)
 docker run --rm \
   -v ./output:/app/output \
   -v ~/firestore.json:/app/firestore.json \
   form-shot-runtime upload \
   /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
-# Step 3: Query the uploaded data
+# Step 3: Query specific test cases
 docker run --rm -v ~/firestore.json:/app/firestore.json \
-  form-shot-runtime query --customer PXL_KISQ --limit 5
+  form-shot-runtime query-test-cases --analysis PXL_KISQ_qa-test_sf36-gad7_en_v1 --status draft
+```
+
+### Extended Workflow (Full Test Data Management)
+```bash
+# Step 1: Analyze (includes test data generation)
+docker run --rm -v ./output:/app/output form-shot-runtime analyze \
+  https://main.qa.castoredc.org/survey/X9PAYLDQ \
+  PXL_KISQ,qa-test,sf36-gad7,en,v1
+
+# Step 2: Upload to Firestore with test cases
+docker run --rm \
+  -v ./output:/app/output \
+  -v ~/firestore.json:/app/firestore.json \
+  form-shot-runtime upload \
+  /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+# Step 3: Get complete analysis with test cases
+docker run --rm -v ~/firestore.json:/app/firestore.json \
+  form-shot-runtime get-analysis PXL_KISQ_qa-test_sf36-gad7_en_v1
+
+# Step 4: Query test cases by status
+docker run --rm -v ~/firestore.json:/app/firestore.json \
+  form-shot-runtime query-test-cases --customer PXL_KISQ --status draft --limit 10
+
+# Step 5: Update test case status after review
+docker run --rm -v ~/firestore.json:/app/firestore.json \
+  form-shot-runtime update-test-case PXL_KISQ_qa-test_sf36-gad7_en_v1 q1_ choice_1__0 approved --reviewer user123
+
+# Step 6: Generate pattern statistics for optimization
+docker run --rm -v ./output:/app/output form-shot-runtime pattern-stats
+```
+
+### Data Management Workflow
+```bash
+# Export unknown fields for manual classification
+docker run --rm -v ./output:/app/output form-shot-runtime export-unknown
+
+# Query all analyses for overview
+docker run --rm -v ~/firestore.json:/app/firestore.json \
+  form-shot-runtime query --limit 10
+
+# Clear all data when starting fresh (⚠️ WARNING: Irreversible!)
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime clear
 ```
 
 ## Output Structure
@@ -166,7 +276,35 @@ output/
         "choices": ["Excellent", "Very good", "Good", "Fair", "Poor"],
         "selector": "#element-id",
         "screenshotPath": "question_1_PXL_KISQ_qa-test.png",
-        "cardBoxSelector": "[data-question-id=\"cardbox-q-1\"]"
+        "cardBoxSelector": "[data-question-id=\"cardbox-q-1\"]",
+        "testData": {
+          "fieldType": "health_rating_scale",
+          "confidence": 0.95,
+          "testCases": [
+            {
+              "id": "choice_1__0",
+              "type": "choice_selection",
+              "value": 0,
+              "description": "Select first option (position-based)",
+              "source": "generated",
+              "status": "draft"
+            },
+            {
+              "id": "choice_1__2", 
+              "type": "choice_selection",
+              "value": 2,
+              "description": "Select middle option (position-based)",
+              "source": "generated",
+              "status": "draft"
+            }
+          ],
+          "summary": {
+            "totalTestCases": 5,
+            "generatedCount": 5,
+            "humanCount": 0,
+            "hybridCount": 0
+          }
+        }
       }
     ],
     "viewportHeight": 6978,
@@ -186,10 +324,10 @@ To use cloud upload features:
 4. Download the service account JSON as `~/firestore.json`
 
 The tool will automatically create collections following this structure:
-- `survey-analyses` - Main analysis documents
-- `survey-analyses/{id}/fields` - Individual form fields
-- `customers` - Customer metadata
-- `survey-metadata` - Survey type metadata
+- `survey-analyses` - Main analysis documents with metadata
+- `survey-analyses/{id}/fields` - Individual form field data
+- `survey-analyses/{id}/fields/{fieldId}/test-cases` - Test cases for each field
+- Screenshots stored in Firebase Storage at `survey-screenshots/{customer}/{study}/{package}/{language}/{version}/`
 
 ## Troubleshooting
 
