@@ -333,20 +333,87 @@ export class SurveyFormDetector {
       });
 
       function generateCardBoxSelector(cardBox: Element, index: number, questionNumber: string): string {
+        // Always scope selectors to within #survey-body-container
+        const surveyContainer = document.querySelector('#survey-body-container');
+        if (!surveyContainer) {
+          throw new Error('survey-body-container not found');
+        }
+        
+        // Check if cardBox has an ID - if so, use it but scoped to survey container
         if (cardBox.id) {
           try {
-            return `#${CSS.escape(cardBox.id)}`;
+            return `#survey-body-container #${CSS.escape(cardBox.id)}`;
           } catch (e) {
-            return `[id="${cardBox.id}"]`;
+            return `#survey-body-container [id="${cardBox.id}"]`;
           }
         }
         
-        // Store a reference to the CardBox element for later use
-        // We'll create a unique attribute to identify this specific CardBox
-        const uniqueId = `cardbox-q-${questionNumber.replace('.', '')}`;
-        cardBox.setAttribute('data-question-id', uniqueId);
+        // Try to find existing identifying attributes within survey container
+        for (const attr of ['data-testid', 'data-id', 'data-question', 'aria-label']) {
+          const value = cardBox.getAttribute(attr);
+          if (value) {
+            return `#survey-body-container [${attr}="${value}"]`;
+          }
+        }
         
-        return `[data-question-id="${uniqueId}"]`;
+        // Calculate nth-of-type position among elements with CardBox class within the parent
+        const parent = cardBox.parentElement;
+        if (parent) {
+          // Get all CardBox siblings (including the current element) of the same tag type
+          const tagName = cardBox.tagName;
+          const sameTypeSiblings = Array.from(parent.children).filter(el => 
+            el.tagName === tagName && el.classList.toString().includes('CardBox')
+          );
+          const typePosition = sameTypeSiblings.indexOf(cardBox);
+          
+          if (typePosition >= 0) {
+            // Use a more specific selector that includes the parent structure
+            const parentSelector = parent === surveyContainer ? '#survey-body-container' : 
+                                  parent.id ? `#${CSS.escape(parent.id)}` : 
+                                  parent.className ? `.${parent.className.split(' ')[0]}` : '';
+            
+            if (parentSelector) {
+              return `${parentSelector} > ${tagName.toLowerCase()}[class*="CardBox"]:nth-of-type(${typePosition + 1})`;
+            }
+          }
+        }
+        
+        // Fallback: use position among all CardBox elements with a more specific query
+        const allCardBoxes = surveyContainer.querySelectorAll('[class*="CardBox"]');
+        const position = Array.from(allCardBoxes).indexOf(cardBox);
+        if (position >= 0) {
+          // Try to get a unique path based on the element's position in the DOM tree
+          const path = [];
+          let current = cardBox;
+          
+          while (current && current !== surveyContainer && current.parentElement) {
+            const parent = current.parentElement;
+            const siblings = Array.from(parent.children);
+            const index = siblings.indexOf(current);
+            
+            if (current.classList.toString().includes('CardBox')) {
+              // For CardBox elements, use the class selector
+              path.unshift(`[class*="CardBox"]:nth-child(${index + 1})`);
+              break;
+            } else if (current.tagName) {
+              // For other elements, use tag name
+              path.unshift(`${current.tagName.toLowerCase()}:nth-child(${index + 1})`);
+            }
+            
+            current = parent;
+          }
+          
+          if (path.length > 0) {
+            return `#survey-body-container ${path.join(' > ')}`;
+          }
+        }
+        
+        // Very last fallback - use the question number if available
+        if (questionNumber) {
+          return `#survey-body-container [class*="CardBox"]:contains("${questionNumber}")`;
+        }
+        
+        return `#survey-body-container [class*="CardBox"]`;
       }
 
       return fieldGroups;

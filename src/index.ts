@@ -10,6 +10,7 @@ import {
   getCompleteAnalysis,
   updateTestCaseStatus
 } from './commands/test-data';
+import { runTests } from './commands/test-run';
 import { SurveyTuple } from './utils/types';
 import { logger } from './utils/logger';
 
@@ -150,6 +151,31 @@ program
       await updateTestCaseStatus(analysisId, fieldId, testCaseId, status, options.reviewer);
     } catch (error) {
       logger.error('Update test case failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('test-run')
+  .description('Execute test cases from Firestore analysis on the survey form')
+  .argument('<analysis-id>', 'Analysis document ID from Firestore')
+  .argument('<url>', 'Survey form URL to test')
+  .option('-o, --output <dir>', 'Output directory for test results', './output/test-runs')
+  .option('-d, --delay <ms>', 'Delay after field input (ms)', '500')
+  .option('--skip-validation', 'Skip validation message detection')
+  .action(async (analysisId: string, url: string, options) => {
+    try {
+      const testRunOptions = {
+        analysisId,
+        url,
+        outputDir: options.output,
+        delay: parseInt(options.delay) || 500,
+        skipValidation: options.skipValidation || false
+      };
+      
+      await runTests(testRunOptions);
+    } catch (error) {
+      logger.error('Test run failed:', error);
       process.exit(1);
     }
   });

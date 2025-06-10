@@ -1,6 +1,7 @@
 ***Requirements***
 - Build a tool that given a URL and a reference tuple string will open the web page (assume no auth step), analyse the form fields on the right hand panel.
-- The right hand panel is scrollable, ensure that the tool scrolls to the bottom to see all the form fields. Store the height of viewport that would be needed to see the whole form without scrolling. Only include the panel within the div with id survey-body-container in the analysis of the form fields.
+- The right hand panel is scrollable, ensure that the tool scrolls to the bottom to see all the form fields. Store the height of viewport that would be needed to see the whole form without scrolling. 
+- Only include the panel within the div with id=survey-body-container in the analysis of the form fields.
 - For each form identify the long title and short name from the top of the form.
 - For each form field (question), identify and record in a JSON structure:
     - question number string e.g. 1. or 1.2 or 2.3.1
@@ -31,6 +32,12 @@
 - The ownership of the output files will be for the same user as executed the tool.
 - The tool will be written in typescript and executed in the latest LTS node version.
 - Use puppeteer to drive the browser, identify form fields and take screenshots
+
+- Using the data in firestore, not the JSON file, starting at the top of the form and working downwards, for each field, for each test case - take the value and apply it to the question 
+- move focus away from the field, take a screenshot of the same div for that question as the analysis
+- Whenever a question value changes and the focus moves away from the input field this can cause:
+    - validation rules to fire which will display messages underneath the input
+- do not use data-question-id= in selectors 
 
 *** Firestore ***
 - use a firestore service account JSON from ~/firestore.json for firestore-admin credentials
@@ -75,16 +82,22 @@ docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime get-an
 11. Update individual test case status:
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime update-test-case PXL_KISQ_qa-test_sf36-gad7_en_v1 q1_ choice_1__0 approved --reviewer user123
 
-12. Complete workflow (analyze + upload):
+12. Execute test cases on survey form (test run):
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ
+
+13. Complete workflow (analyze + upload + test):
 # Step 1: Analyze (now includes automatic test data generation)
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
 
 # Step 2: Upload results (test cases stored in sub-collections)
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
-# Step 3: Query specific test cases
+# Step 3: Execute test cases on the live form
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ
+
+# Step 4: Query specific test cases
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --analysis PXL_KISQ_qa-test_sf36-gad7_en_v1 --status draft
 
-# Step 4: Export for UI review (optional)
+# Step 5: Export for UI review (optional)
 docker run --rm -v ./output:/app/output form-shot-runtime export-for-review /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 

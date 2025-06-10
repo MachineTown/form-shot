@@ -15,6 +15,8 @@ An automated survey form analysis tool that captures form fields, screenshots, a
 - **Cloud Integration**: Uploads analysis results and screenshots to Firestore and Firebase Storage
 - **Sub-collection Architecture**: Stores test cases in Firestore sub-collections for scalable querying
 - **Test Case Management**: Update status, track reviews, and generate statistics
+- **Automated Test Execution**: Execute test cases on live forms with validation detection
+- **Validation Testing**: Capture form validation states and error messages
 - **Containerized**: Runs completely within Docker with no local dependencies
 
 ## Prerequisites
@@ -159,7 +161,30 @@ docker run --rm -v ./output:/app/output form-shot-runtime pattern-stats
 docker run --rm -v ./output:/app/output form-shot-runtime export-unknown
 ```
 
-### 9. Clear All Firestore Data (⚠️ WARNING: Irreversible!)
+### 9. Execute Test Cases on Survey Form (Test Run)
+```bash
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run <ANALYSIS_ID> <URL> [OPTIONS]
+```
+
+Options:
+- `-o, --output <dir>`: Output directory for test results (default: ./output/test-runs)
+- `-d, --delay <ms>`: Delay after field input in milliseconds (default: 500)
+- `--skip-validation`: Skip validation message detection
+
+Example:
+```bash
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ
+```
+
+This will:
+- Retrieve analysis and test cases from Firestore
+- Apply each test case value to the corresponding form field
+- Move focus away to trigger validation
+- Capture validation messages and states
+- Take screenshots of each field after test case application
+- Generate a comprehensive test run report
+
+### 10. Clear All Firestore Data (⚠️ WARNING: Irreversible!)
 ```bash
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime clear
 ```
@@ -190,7 +215,7 @@ docker run --rm -v ~/firestore.json:/app/firestore.json \
   form-shot-runtime query-test-cases --analysis PXL_KISQ_qa-test_sf36-gad7_en_v1 --status draft
 ```
 
-### Extended Workflow (Full Test Data Management)
+### Extended Workflow (Full Test Data Management + Testing)
 ```bash
 # Step 1: Analyze (includes test data generation)
 docker run --rm -v ./output:/app/output form-shot-runtime analyze \
@@ -204,19 +229,26 @@ docker run --rm \
   form-shot-runtime upload \
   /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
-# Step 3: Get complete analysis with test cases
+# Step 3: Execute test cases on the live form
+docker run --rm \
+  -v ./output:/app/output \
+  -v ~/firestore.json:/app/firestore.json \
+  form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 \
+  https://main.qa.castoredc.org/survey/X9PAYLDQ
+
+# Step 4: Get complete analysis with test cases
 docker run --rm -v ~/firestore.json:/app/firestore.json \
   form-shot-runtime get-analysis PXL_KISQ_qa-test_sf36-gad7_en_v1
 
-# Step 4: Query test cases by status
+# Step 5: Query test cases by status
 docker run --rm -v ~/firestore.json:/app/firestore.json \
   form-shot-runtime query-test-cases --customer PXL_KISQ --status draft --limit 10
 
-# Step 5: Update test case status after review
+# Step 6: Update test case status after review
 docker run --rm -v ~/firestore.json:/app/firestore.json \
   form-shot-runtime update-test-case PXL_KISQ_qa-test_sf36-gad7_en_v1 q1_ choice_1__0 approved --reviewer user123
 
-# Step 6: Generate pattern statistics for optimization
+# Step 7: Generate pattern statistics for optimization
 docker run --rm -v ./output:/app/output form-shot-runtime pattern-stats
 ```
 
@@ -248,6 +280,12 @@ output/
 │   │   │   │   │   ├── question_1_customer_study.png
 │   │   │   │   │   ├── question_2_customer_study.png
 │   │   │   │   │   └── ...
+├── test-runs/
+│   ├── {analysis_id}_{timestamp}/
+│   │   ├── test-run-results.json
+│   │   ├── test_q1__choice_1__0_{timestamp}.png
+│   │   ├── test_q1__choice_1__2_{timestamp}.png
+│   │   └── ...
 ```
 
 ### Analysis JSON Structure
@@ -311,6 +349,46 @@ output/
     "url": "https://main.qa.castoredc.org/survey/X9PAYLDQ",
     "timestamp": "2025-06-10T09:54:30.760Z"
   }
+}
+```
+
+### Test Run Results JSON Structure
+```json
+{
+  "analysisId": "PXL_KISQ_qa-test_sf36-gad7_en_v1",
+  "url": "https://main.qa.castoredc.org/survey/X9PAYLDQ",
+  "startTime": "2025-06-10T20:45:30.123Z",
+  "endTime": "2025-06-10T20:47:15.456Z",
+  "totalDuration": 105333,
+  "fieldsProcessed": 36,
+  "testCasesExecuted": 180,
+  "successfulTestCases": 175,
+  "failedTestCases": 5,
+  "validationErrorsFound": 12,
+  "results": [
+    {
+      "fieldId": "q1_",
+      "testCaseId": "choice_1__0",
+      "questionNumber": "1.",
+      "testCaseValue": 0,
+      "applied": true,
+      "validationTriggered": false,
+      "validationMessages": [],
+      "screenshotPath": "test_q1__choice_1__0_1675123456789.png",
+      "duration": 850
+    },
+    {
+      "fieldId": "q2_",
+      "testCaseId": "text_age_invalid",
+      "questionNumber": "2.",
+      "testCaseValue": "abc",
+      "applied": true,
+      "validationTriggered": true,
+      "validationMessages": ["Please enter a valid number"],
+      "screenshotPath": "test_q2__text_age_invalid_1675123457890.png",
+      "duration": 1200
+    }
+  ]
 }
 ```
 
