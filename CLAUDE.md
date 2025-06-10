@@ -26,8 +26,32 @@
 - The tool will be written in typescript and executed in the latest LTS node version.
 - Use puppeteer to drive the browser, identify form fields and take screenshots
 
+*** Firestore ***
+- use a firestore service account JSON from ~/firestore.json for firestore-admin credentials
+- add an option to the tool to take the analysis.json and screenshots from the analysis step and upload into firestore, using the structures defined in FIRESTORE.md
+
+
 *** Build instructions ***
 use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
 
-example run command: docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+*** Commands ***
+
+1. Analyze survey:
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+
+2. Upload analysis to Firestore:
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+3. Query analyses from Firestore:
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query --limit 5
+
+4. Query analyses with filters:
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query --customer PXL_KISQ --limit 5
+
+5. Complete workflow (analyze + upload):
+# Step 1: Analyze
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+
+# Step 2: Upload results
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
