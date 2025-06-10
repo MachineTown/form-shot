@@ -9,6 +9,12 @@
     - If the question text has a * at the end of it, it is a required field. Record this as a boolean.
     - If the input type is a radio or a dropdown, then record the choices
     - Take a screen shot of the whole <div> that contains the question text and input fields - reference this file name in the JSON for the field
+    - Generate comprehensive test data for automated testing:
+        - For radio buttons/dropdowns: position-based test cases (0, 1, 2, etc.) for language independence
+        - For text fields: intelligent type detection (email, phone, name, age, etc.) with appropriate test values
+        - For text areas: varying length responses from short to multi-paragraph
+        - Track provenance: distinguish between generated, human-entered, and hybrid test cases
+        - Support extensible field type detection for new survey types
 - Each question is framed by a box identified by a div with a class that starts with CardBox (question number, question text, input fields (radios within frame are choices) ).   
 - Example forms can be found at the following URLS:
     - https://main.qa.castoredc.org/survey/X9PAYLDQ
@@ -36,10 +42,10 @@ use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
 
 *** Commands ***
 
-1. Analyze survey:
+1. Analyze survey (with automatic test data generation):
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
 
-2. Upload analysis to Firestore:
+2. Upload analysis to Firestore (includes test data):
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
 3. Query analyses from Firestore:
@@ -48,10 +54,37 @@ docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query 
 4. Query analyses with filters:
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query --customer PXL_KISQ --limit 5
 
-5. Complete workflow (analyze + upload):
-# Step 1: Analyze
+5. Export test data for UI review:
+docker run --rm -v ./output:/app/output form-shot-runtime export-for-review /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+6. Import reviewed test data:
+docker run --rm -v ./output:/app/output form-shot-runtime import-reviewed /app/output/reviewed_test_data.json /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+7. Generate pattern statistics:
+docker run --rm -v ./output:/app/output form-shot-runtime pattern-stats
+
+8. Export unknown fields for classification:
+docker run --rm -v ./output:/app/output form-shot-runtime export-unknown
+
+9. Query test cases from Firestore (sub-collection queries):
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --customer PXL_KISQ --status draft --limit 10
+
+10. Get complete analysis with test cases:
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime get-analysis PXL_KISQ_qa-test_sf36-gad7_en_v1
+
+11. Update individual test case status:
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime update-test-case PXL_KISQ_qa-test_sf36-gad7_en_v1 q1_ choice_1__0 approved --reviewer user123
+
+12. Complete workflow (analyze + upload):
+# Step 1: Analyze (now includes automatic test data generation)
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
 
-# Step 2: Upload results
+# Step 2: Upload results (test cases stored in sub-collections)
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+# Step 3: Query specific test cases
+docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --analysis PXL_KISQ_qa-test_sf36-gad7_en_v1 --status draft
+
+# Step 4: Export for UI review (optional)
+docker run --rm -v ./output:/app/output form-shot-runtime export-for-review /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 

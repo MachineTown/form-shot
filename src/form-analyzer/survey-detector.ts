@@ -1,6 +1,7 @@
 import { Page } from 'puppeteer';
 import { SurveyForm, SurveyField, SurveyTuple } from '../utils/types';
 import { logger } from '../utils/logger';
+import { testDataGenerator } from '../test-generator/test-data-generator';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
 
@@ -362,6 +363,21 @@ export class SurveyFormDetector {
       const screenshotPath = await this.takeFieldScreenshot(page, field.cardBoxSelector, questionNum, tuple);
       field.screenshotPath = screenshotPath;
     }
+
+    // Generate test data for each field
+    logger.info(`Generating test data for ${fields.length} questions`);
+    for (const field of fields) {
+      try {
+        field.testData = testDataGenerator.generateTestData(field);
+        logger.debug(`Generated ${field.testData.testCases.length} test cases for question ${field.questionNumber}`);
+      } catch (error) {
+        logger.error(`Failed to generate test data for question ${field.questionNumber}:`, error);
+        // Continue processing other fields even if one fails
+      }
+    }
+
+    const totalTestCases = fields.reduce((sum, field) => sum + (field.testData?.testCases.length || 0), 0);
+    logger.info(`Generated ${totalTestCases} total test cases across all fields`);
 
     return fields;
   }

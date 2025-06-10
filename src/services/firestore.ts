@@ -93,6 +93,8 @@ export class FirestoreService {
         
         // Form fields summary
         fieldsCount: form.fields.length,
+        hasTestData: form.fields.some(field => field.testData),
+        testDataSummary: this.calculateTestDataSummary(form.fields),
         
         // Cloud Storage references
         screenshotsPath: screenshotsPath,
@@ -116,10 +118,12 @@ export class FirestoreService {
       // Add fields as subcollection documents
       const fieldsCollection = analysisRef.collection('fields');
       
-      form.fields.forEach((field, index) => {
+      for (let index = 0; index < form.fields.length; index++) {
+        const field = form.fields[index];
         const fieldId = field.questionNumber ? `q${field.questionNumber.replace(/\./g, '_')}` : `field_${index + 1}`;
         const fieldRef = fieldsCollection.doc(fieldId);
         
+        // Create field document without embedded test cases
         const fieldDoc = {
           questionNumber: field.questionNumber,
           questionText: field.questionText,
@@ -130,11 +134,49 @@ export class FirestoreService {
           cardBoxSelector: field.cardBoxSelector,
           screenshotFilename: field.screenshotPath,
           screenshotUrl: uploadedScreenshots[field.screenshotPath] || '',
-          order: index + 1
+          order: index + 1,
+          // Store only test data metadata, not the test cases themselves
+          testData: field.testData ? {
+            detectedType: field.testData.detectedType,
+            confidence: field.testData.confidence,
+            detectionMethod: field.testData.detectionMethod,
+            generatedAt: field.testData.generatedAt,
+            summary: field.testData.summary,
+            metadata: field.testData.metadata
+          } : undefined
         };
         
         batch.set(fieldRef, fieldDoc);
-      });
+        
+        // Add test cases as sub-collection documents
+        if (field.testData && field.testData.testCases.length > 0) {
+          const testCasesCollection = fieldRef.collection('test-cases');
+          
+          field.testData.testCases.forEach((testCase) => {
+            const testCaseRef = testCasesCollection.doc(testCase.id);
+            const testCaseDoc = {
+              id: testCase.id,
+              type: testCase.type,
+              value: testCase.value,
+              position: testCase.position,
+              description: testCase.description,
+              source: testCase.source,
+              provenance: testCase.provenance,
+              status: testCase.status,
+              quality: testCase.quality,
+              // Add references for easier querying
+              fieldId: fieldId,
+              questionNumber: field.questionNumber,
+              analysisId: docId,
+              customerId: tuple.customerId,
+              studyId: tuple.studyId,
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            
+            batch.set(testCaseRef, testCaseDoc);
+          });
+        }
+      }
 
       // Update customer metadata
       await this.updateCustomerMetadata(tuple.customerId, tuple.studyId);
@@ -288,5 +330,172 @@ export class FirestoreService {
       logger.error('Failed to query analyses:', error);
       throw error;
     }
+  }
+
+  async getAnalysisWithTestCases(analysisId: string): Promise<any> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    try {
+      // Get main analysis document
+      const analysisDoc = await this.db.collection('survey-analyses').doc(analysisId).get();
+      if (!analysisDoc.exists) {
+        throw new Error(`Analysis not found: ${analysisId}`);
+      }
+
+      const analysisData = { id: analysisDoc.id, ...analysisDoc.data() };
+
+      // Get all fields
+      const fieldsSnapshot = await analysisDoc.ref.collection('fields').orderBy('order').get();
+      const fields = [];
+
+      for (const fieldDoc of fieldsSnapshot.docs) {
+        const fieldData: any = { id: fieldDoc.id, ...fieldDoc.data() };
+
+        // Get test cases for this field
+        const testCasesSnapshot = await fieldDoc.ref.collection('test-cases').get();
+        const testCases = testCasesSnapshot.docs.map(tcDoc => ({
+          id: tcDoc.id,
+          ...tcDoc.data()
+        }));
+
+        // Reconstruct testData structure for compatibility
+        if (fieldData.testData && testCases.length > 0) {
+          fieldData.testData.testCases = testCases;
+        }
+
+        fields.push(fieldData);
+      }
+
+      (analysisData as any).fields = fields;
+      return analysisData;
+
+    } catch (error) {
+      logger.error('Failed to get analysis with test cases:', error);
+      throw error;
+    }
+  }
+
+  async queryTestCases(filters: {
+    analysisId?: string;
+    customerId?: string;
+    studyId?: string;
+    status?: string;
+    source?: string;
+    limit?: number;
+  } = {}): Promise<any[]> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    try {
+      let query: any = this.db.collectionGroup('test-cases');
+
+      if (filters.analysisId) {
+        query = query.where('analysisId', '==', filters.analysisId);
+      }
+      if (filters.customerId) {
+        query = query.where('customerId', '==', filters.customerId);
+      }
+      if (filters.studyId) {
+        query = query.where('studyId', '==', filters.studyId);
+      }
+      if (filters.status) {
+        query = query.where('status', '==', filters.status);
+      }
+      if (filters.source) {
+        query = query.where('source', '==', filters.source);
+      }
+
+      query = query.orderBy('createdAt', 'desc');
+      
+      if (filters.limit) {
+        query = query.limit(filters.limit);
+      }
+
+      const snapshot = await query.get();
+      return snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      logger.error('Failed to query test cases:', error);
+      throw error;
+    }
+  }
+
+  async updateTestCaseStatus(analysisId: string, fieldId: string, testCaseId: string, status: string, reviewerId?: string): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    try {
+      const testCaseRef = this.db
+        .collection('survey-analyses')
+        .doc(analysisId)
+        .collection('fields')
+        .doc(fieldId)
+        .collection('test-cases')
+        .doc(testCaseId);
+
+      const updateData: any = {
+        status,
+        'quality.reviewCount': admin.firestore.FieldValue.increment(1),
+        'quality.lastReviewed': admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      if (reviewerId) {
+        updateData['provenance.modifications'] = admin.firestore.FieldValue.arrayUnion({
+          timestamp: new Date().toISOString(),
+          modifiedBy: reviewerId,
+          action: 'status_update',
+          changes: { status: { to: status } },
+          reason: 'Manual review'
+        });
+      }
+
+      await testCaseRef.update(updateData);
+      logger.debug(`Updated test case ${testCaseId} status to ${status}`);
+
+    } catch (error) {
+      logger.error('Failed to update test case status:', error);
+      throw error;
+    }
+  }
+
+  private calculateTestDataSummary(fields: SurveyField[]): any {
+    const fieldsWithTestData = fields.filter(field => field.testData);
+    
+    if (fieldsWithTestData.length === 0) {
+      return {
+        fieldsWithTestData: 0,
+        totalTestCases: 0,
+        generatedTestCases: 0,
+        humanTestCases: 0,
+        hybridTestCases: 0
+      };
+    }
+
+    const totalTestCases = fieldsWithTestData.reduce((sum, field) => 
+      sum + (field.testData?.testCases.length || 0), 0);
+    
+    const generatedTestCases = fieldsWithTestData.reduce((sum, field) => 
+      sum + (field.testData?.summary.generatedCount || 0), 0);
+    
+    const humanTestCases = fieldsWithTestData.reduce((sum, field) => 
+      sum + (field.testData?.summary.humanCount || 0), 0);
+    
+    const hybridTestCases = fieldsWithTestData.reduce((sum, field) => 
+      sum + (field.testData?.summary.hybridCount || 0), 0);
+
+    return {
+      fieldsWithTestData: fieldsWithTestData.length,
+      totalTestCases,
+      generatedTestCases,
+      humanTestCases,
+      hybridTestCases,
+      averageTestCasesPerField: Math.round(totalTestCases / fieldsWithTestData.length * 100) / 100
+    };
   }
 }

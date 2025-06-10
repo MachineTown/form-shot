@@ -3,6 +3,15 @@
 import { Command } from 'commander';
 import { analyzeSurvey } from './commands/analyze';
 import { uploadToFirestore, queryFirestore } from './commands/upload';
+import { 
+  exportTestDataForReview, 
+  importReviewedTestData, 
+  generatePatternStats,
+  exportUnknownFields,
+  queryTestCases,
+  getCompleteAnalysis,
+  updateTestCaseStatus
+} from './commands/test-data';
 import { SurveyTuple } from './utils/types';
 import { logger } from './utils/logger';
 
@@ -57,6 +66,105 @@ program
       await queryFirestore(options.customer, options.study, limit);
     } catch (error) {
       logger.error('Query failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('export-for-review')
+  .description('Export test data for UI review')
+  .argument('<analysis-json>', 'Path to analysis.json file')
+  .action(async (analysisJsonPath: string) => {
+    try {
+      await exportTestDataForReview(analysisJsonPath);
+    } catch (error) {
+      logger.error('Export for review failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('import-reviewed')
+  .description('Import reviewed test data back to analysis')
+  .argument('<reviewed-json>', 'Path to reviewed test data JSON file')
+  .argument('<original-analysis>', 'Path to original analysis.json file')
+  .action(async (reviewedJsonPath: string, originalAnalysisPath: string) => {
+    try {
+      await importReviewedTestData(reviewedJsonPath, originalAnalysisPath);
+    } catch (error) {
+      logger.error('Import reviewed data failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('pattern-stats')
+  .description('Generate field type pattern statistics')
+  .action(async () => {
+    try {
+      await generatePatternStats();
+    } catch (error) {
+      logger.error('Pattern stats generation failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('export-unknown')
+  .description('Export unknown fields for manual classification')
+  .action(async () => {
+    try {
+      await exportUnknownFields();
+    } catch (error) {
+      logger.error('Export unknown fields failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('query-test-cases')
+  .description('Query test cases from Firestore')
+  .option('-a, --analysis <analysisId>', 'Filter by analysis ID')
+  .option('-c, --customer <customerId>', 'Filter by customer ID')
+  .option('-s, --study <studyId>', 'Filter by study ID')
+  .option('--status <status>', 'Filter by status (draft, approved, rejected, needs_review)')
+  .option('--source <source>', 'Filter by source (generated, human, hybrid)')
+  .option('-l, --limit <number>', 'Limit number of results', '20')
+  .action(async (options) => {
+    try {
+      await queryTestCases(options);
+    } catch (error) {
+      logger.error('Query test cases failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('get-analysis')
+  .description('Get complete analysis with test cases from Firestore')
+  .argument('<analysis-id>', 'Analysis document ID')
+  .action(async (analysisId: string) => {
+    try {
+      await getCompleteAnalysis(analysisId);
+    } catch (error) {
+      logger.error('Get analysis failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('update-test-case')
+  .description('Update test case status in Firestore')
+  .argument('<analysis-id>', 'Analysis document ID')
+  .argument('<field-id>', 'Field document ID')
+  .argument('<test-case-id>', 'Test case document ID')
+  .argument('<status>', 'New status (approved, rejected, needs_review)')
+  .option('-r, --reviewer <reviewerId>', 'Reviewer ID')
+  .action(async (analysisId: string, fieldId: string, testCaseId: string, status: string, options) => {
+    try {
+      await updateTestCaseStatus(analysisId, fieldId, testCaseId, status, options.reviewer);
+    } catch (error) {
+      logger.error('Update test case failed:', error);
       process.exit(1);
     }
   });
