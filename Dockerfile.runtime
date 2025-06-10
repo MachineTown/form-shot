@@ -39,6 +39,9 @@ COPY dist/ ./dist/
 COPY node_modules/ ./node_modules/
 COPY package.json ./
 
+# Copy Firestore service account key if it exists (optional)
+COPY firestore.jso[n] ./
+
 # Create user for running the app first - use existing node user (UID 1000)
 RUN usermod -l appuser node && groupmod -n appuser node
 

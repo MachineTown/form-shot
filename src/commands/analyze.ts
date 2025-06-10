@@ -1,6 +1,7 @@
 import { PuppeteerManager } from '../browser/puppeteer-manager';
 import { SurveyFormDetector } from '../form-analyzer/survey-detector';
 import { SurveyTuple, AnalysisOutput } from '../utils/types';
+import { logger } from '../utils/logger';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -9,16 +10,16 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
   const formDetector = new SurveyFormDetector();
   
   try {
-    console.log('Launching browser...');
+    logger.info('Launching browser...');
     await puppeteerManager.launch();
     
-    console.log('Navigating to survey...');
+    logger.info('Navigating to survey...');
     await puppeteerManager.navigateToPage(url);
     
-    console.log('Detecting survey form...');
+    logger.info('Detecting survey form...');
     const form = await formDetector.detectSurveyForm(puppeteerManager.getPage(), tuple);
     
-    console.log(`Found survey: "${form.longTitle}" with ${form.fields.length} fields`);
+    logger.info(`Found survey: "${form.longTitle}" with ${form.fields.length} fields`);
     
     // Generate output
     const output: AnalysisOutput = {
@@ -33,7 +34,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
     // Save results
     await saveResults(output, tuple);
     
-    console.log(`Analysis saved to output directory`);
+    logger.info(`Analysis completed successfully`);
     
   } finally {
     await puppeteerManager.close();
@@ -46,7 +47,7 @@ async function saveResults(output: AnalysisOutput, tuple: SurveyTuple): Promise<
   try {
     mkdirSync(outputDir, { recursive: true, mode: 0o777 });
   } catch (error) {
-    console.warn('Failed to create output directory:', error);
+    logger.warn('Failed to create output directory:', error);
     // Try fallback to current directory
     const fallbackDir = join(process.cwd(), 'output');
     mkdirSync(fallbackDir, { recursive: true });
@@ -54,7 +55,7 @@ async function saveResults(output: AnalysisOutput, tuple: SurveyTuple): Promise<
     // Save to fallback location
     const analysisPath = join(fallbackDir, `analysis_${tuple.customerId}_${tuple.studyId}.json`);
     writeFileSync(analysisPath, JSON.stringify(output, null, 2));
-    console.log(`Results saved to fallback location: ${analysisPath}`);
+    logger.info(`Results saved to fallback location: ${analysisPath}`);
     return;
   }
   
@@ -62,5 +63,5 @@ async function saveResults(output: AnalysisOutput, tuple: SurveyTuple): Promise<
   const analysisPath = join(outputDir, 'analysis.json');
   writeFileSync(analysisPath, JSON.stringify(output, null, 2));
   
-  console.log(`Results saved to: ${analysisPath}`);
+  logger.info(`Results saved to: ${analysisPath}`);
 }

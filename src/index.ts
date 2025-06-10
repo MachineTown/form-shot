@@ -2,7 +2,9 @@
 
 import { Command } from 'commander';
 import { analyzeSurvey } from './commands/analyze';
+import { uploadToFirestore, queryFirestore } from './commands/upload';
 import { SurveyTuple } from './utils/types';
+import { logger } from './utils/logger';
 
 const program = new Command();
 
@@ -20,13 +22,41 @@ program
     try {
       // Parse the tuple string
       const tuple = parseTupleString(tupleString);
-      console.log(`Starting analysis of ${url}`);
-      console.log(`Tuple: ${JSON.stringify(tuple)}`);
+      logger.info(`Starting analysis of ${url}`);
+      logger.info(`Tuple: ${JSON.stringify(tuple)}`);
       
       await analyzeSurvey(url, tuple);
-      console.log('Analysis completed successfully');
     } catch (error) {
-      console.error('Analysis failed:', error);
+      logger.error('Analysis failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('upload')
+  .description('Upload analysis results to Firestore')
+  .argument('<analysis-json>', 'Path to analysis.json file')
+  .action(async (analysisJsonPath: string) => {
+    try {
+      await uploadToFirestore(analysisJsonPath);
+    } catch (error) {
+      logger.error('Upload failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('query')
+  .description('Query analyses from Firestore')
+  .option('-c, --customer <customerId>', 'Filter by customer ID')
+  .option('-s, --study <studyId>', 'Filter by study ID')
+  .option('-l, --limit <number>', 'Limit number of results', '10')
+  .action(async (options) => {
+    try {
+      const limit = parseInt(options.limit) || 10;
+      await queryFirestore(options.customer, options.study, limit);
+    } catch (error) {
+      logger.error('Query failed:', error);
       process.exit(1);
     }
   });
