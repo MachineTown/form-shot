@@ -2,7 +2,7 @@ import { PuppeteerManager } from '../browser/puppeteer-manager';
 import { FirestoreService } from '../services/firestore';
 import { logger } from '../utils/logger';
 import { SurveyTuple } from '../utils/types';
-import { mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 
 export interface TestRunOptions {
@@ -11,6 +11,7 @@ export interface TestRunOptions {
   outputDir?: string;
   delay?: number;
   skipValidation?: boolean;
+  leaveFiles?: boolean;
 }
 
 export interface TestCaseResult {
@@ -190,13 +191,17 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
       results
     };
     
-    // Save test run results
+    // Save test run results locally first
     const resultPath = join(runOutputDir, 'test-run-results.json');
     await require('fs').promises.writeFile(
       resultPath, 
       JSON.stringify(testRunResult, null, 2), 
       'utf8'
     );
+    
+    // Upload results to Firestore and Cloud Storage
+    logger.info('Uploading test run results to Firestore and Cloud Storage...');
+    await firestoreService.uploadTestRunResults(testRunResult, runOutputDir);
     
     logger.info(`\n📊 Test Run Summary:`);
     logger.info(`   Analysis ID: ${options.analysisId}`);
@@ -207,6 +212,20 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
     logger.info(`   Validation Errors Found: ${validationErrorsFound}`);
     logger.info(`   Duration: ${Math.round(totalDuration / 1000)}s`);
     logger.info(`   Results saved to: ${resultPath}`);
+    logger.info(`   ✅ Results uploaded to Firestore and Cloud Storage`);
+    
+    // Clean up local files unless --leave flag is set
+    if (!options.leaveFiles) {
+      logger.info('Cleaning up local output files...');
+      try {
+        rmSync(runOutputDir, { recursive: true, force: true });
+        logger.info('Local files cleaned up successfully');
+      } catch (error) {
+        logger.warn('Failed to clean up local files:', error);
+      }
+    } else {
+      logger.info('Local files retained (--leave flag set)');
+    }
     
     return testRunResult;
     

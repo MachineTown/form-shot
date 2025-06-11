@@ -1,8 +1,9 @@
 import * as admin from 'firebase-admin';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { logger } from '../utils/logger';
 import { AnalysisOutput, SurveyField } from '../utils/types';
+import { TestRunResult } from '../commands/test-run';
 
 export class FirestoreService {
   private db!: admin.firestore.Firestore;
@@ -597,5 +598,120 @@ export class FirestoreService {
         throw error;
       }
     }
+  }
+
+  async uploadTestRunResults(testRunResult: TestRunResult, outputDir: string): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    try {
+      const runId = `${testRunResult.analysisId}_${new Date(testRunResult.startTime).getTime()}`;
+      logger.info(`Uploading test run results with ID: ${runId}`);
+
+      // Upload screenshots to Cloud Storage first
+      const screenshotsPath = `test-runs/${testRunResult.analysisId}/${new Date(testRunResult.startTime).getTime()}`;
+      const uploadedScreenshots = await this.uploadTestRunScreenshots(testRunResult.results, outputDir, screenshotsPath);
+
+      // Create test run document
+      const testRunDoc = {
+        runId,
+        analysisId: testRunResult.analysisId,
+        url: testRunResult.url,
+        startTime: admin.firestore.Timestamp.fromDate(new Date(testRunResult.startTime)),
+        endTime: admin.firestore.Timestamp.fromDate(new Date(testRunResult.endTime)),
+        totalDuration: testRunResult.totalDuration,
+        fieldsProcessed: testRunResult.fieldsProcessed,
+        testCasesExecuted: testRunResult.testCasesExecuted,
+        successfulTestCases: testRunResult.successfulTestCases,
+        failedTestCases: testRunResult.failedTestCases,
+        validationErrorsFound: testRunResult.validationErrorsFound,
+        screenshotsPath,
+        status: testRunResult.failedTestCases > 0 ? 'completed_with_failures' : 'completed',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      // Start batch write
+      const batch = this.db.batch();
+
+      // Add main test run document
+      const testRunRef = this.db.collection('test-runs').doc(runId);
+      batch.set(testRunRef, testRunDoc);
+
+      // Add test case results as subcollection
+      const resultsCollection = testRunRef.collection('results');
+      
+      for (const result of testRunResult.results) {
+        const resultId = `${result.fieldId}_${result.testCaseId}`;
+        const resultRef = resultsCollection.doc(resultId);
+        
+        const resultDoc = {
+          ...result,
+          screenshotUrl: uploadedScreenshots[result.screenshotPath] || '',
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        batch.set(resultRef, resultDoc);
+      }
+
+      // Update analysis document with latest test run info
+      const analysisRef = this.db.collection('survey-analyses').doc(testRunResult.analysisId);
+      batch.update(analysisRef, {
+        lastTestRunAt: admin.firestore.FieldValue.serverTimestamp(),
+        totalTestRuns: admin.firestore.FieldValue.increment(1),
+        lastTestRunId: runId,
+        lastTestRunStatus: testRunDoc.status
+      });
+
+      // Commit batch
+      await batch.commit();
+      
+      logger.info(`Successfully uploaded test run results with ${testRunResult.results.length} test case results`);
+      
+    } catch (error) {
+      logger.error('Failed to upload test run results to Firestore:', error);
+      throw error;
+    }
+  }
+
+  private async uploadTestRunScreenshots(results: any[], outputDir: string, basePath: string): Promise<Record<string, string>> {
+    const uploadedScreenshots: Record<string, string> = {};
+    const bucket = this.storage.bucket();
+
+    // Get all PNG files from the output directory
+    const screenshotFiles = readdirSync(outputDir).filter(file => file.endsWith('.png'));
+    logger.info(`Uploading ${screenshotFiles.length} test run screenshots to Cloud Storage`);
+
+    for (const filename of screenshotFiles) {
+      try {
+        const localPath = join(outputDir, filename);
+        const cloudPath = `${basePath}/${filename}`;
+        const file = bucket.file(cloudPath);
+        
+        await file.save(readFileSync(localPath), {
+          metadata: {
+            contentType: 'image/png',
+            metadata: {
+              testRun: true,
+              timestamp: new Date().toISOString()
+            }
+          }
+        });
+
+        // Make file publicly readable
+        await file.makePublic();
+        
+        // Get public URL
+        uploadedScreenshots[filename] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+        
+        logger.debug(`Uploaded test run screenshot: ${filename}`);
+        
+      } catch (error) {
+        logger.error(`Failed to upload test run screenshot ${filename}:`, error);
+      }
+    }
+
+    logger.info(`Uploaded ${Object.keys(uploadedScreenshots).length} test run screenshots successfully`);
+    return uploadedScreenshots;
   }
 }

@@ -79,12 +79,19 @@ docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.q
 
 ### 2. Upload Analysis to Firestore (includes test data)
 ```bash
-docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload <ANALYSIS_JSON_PATH>
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload <ANALYSIS_JSON_PATH> [OPTIONS]
 ```
 
-Example:
+Options:
+- `--leave`: Keep local output files after upload (default: remove)
+
+Examples:
 ```bash
+# Upload and remove local files (default)
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+# Upload and keep local files
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json --leave
 ```
 
 ### 3. Query Analyses from Firestore
@@ -170,10 +177,15 @@ Options:
 - `-o, --output <dir>`: Output directory for test results (default: ./output/test-runs)
 - `-d, --delay <ms>`: Delay after field input in milliseconds (default: 500)
 - `--skip-validation`: Skip validation message detection
+- `--leave`: Keep local output files after upload (default: remove)
 
-Example:
+Examples:
 ```bash
+# Execute test run and remove local files (default)
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ
+
+# Execute test run and keep local files
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ --leave
 ```
 
 This will:
@@ -183,6 +195,8 @@ This will:
 - Capture validation messages and states
 - Take screenshots of each field after test case application
 - Generate a comprehensive test run report
+- Upload results to Firestore and Cloud Storage
+- Clean up local files unless --leave flag is used
 
 ### 10. Clear All Firestore Data (⚠️ WARNING: Irreversible!)
 ```bash
@@ -204,6 +218,7 @@ docker run --rm -v ./output:/app/output form-shot-runtime analyze \
   PXL_KISQ,qa-test,sf36-gad7,en,v1
 
 # Step 2: Upload results (test cases stored in sub-collections)
+# Note: This will remove local files after successful upload
 docker run --rm \
   -v ./output:/app/output \
   -v ~/firestore.json:/app/firestore.json \
@@ -230,6 +245,7 @@ docker run --rm \
   /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
 # Step 3: Execute test cases on the live form
+# Note: Results uploaded to Firestore/Cloud Storage, local files removed after upload
 docker run --rm \
   -v ./output:/app/output \
   -v ~/firestore.json:/app/firestore.json \
@@ -405,7 +421,11 @@ The tool will automatically create collections following this structure:
 - `survey-analyses` - Main analysis documents with metadata
 - `survey-analyses/{id}/fields` - Individual form field data
 - `survey-analyses/{id}/fields/{fieldId}/test-cases` - Test cases for each field
-- Screenshots stored in Firebase Storage at `survey-screenshots/{customer}/{study}/{package}/{language}/{version}/`
+- `test-runs` - Test execution results with metadata
+- `test-runs/{runId}/results` - Individual test case execution results
+- Screenshots stored in Firebase Storage:
+  - Analysis screenshots: `survey-screenshots/{customer}/{study}/{package}/{language}/{version}/`
+  - Test run screenshots: `test-runs/{analysisId}/{timestamp}/`
 
 ## Troubleshooting
 

@@ -1,10 +1,10 @@
 import { FirestoreService } from '../services/firestore';
 import { AnalysisOutput } from '../utils/types';
 import { logger } from '../utils/logger';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 
-export async function uploadToFirestore(analysisJsonPath: string): Promise<void> {
+export async function uploadToFirestore(analysisJsonPath: string, leaveFiles: boolean = false): Promise<void> {
   const firestoreService = new FirestoreService();
   
   try {
@@ -55,6 +55,21 @@ export async function uploadToFirestore(analysisJsonPath: string): Promise<void>
     const { tuple } = analysisData.metadata;
     logger.info(`Uploaded analysis: ${tuple.customerId}/${tuple.studyId}/${tuple.packageName}/${tuple.language}/${tuple.version}`);
     logger.info(`Document ID: ${tuple.customerId}_${tuple.studyId}_${tuple.packageName}_${tuple.language}_${tuple.version}`);
+    
+    // Clean up local files unless --leave flag is set
+    if (!leaveFiles) {
+      logger.info('Cleaning up local output files...');
+      try {
+        // Remove the entire output directory for this analysis
+        const outputPath = dirname(analysisJsonPath);
+        rmSync(outputPath, { recursive: true, force: true });
+        logger.info('Local files cleaned up successfully');
+      } catch (error) {
+        logger.warn('Failed to clean up local files:', error);
+      }
+    } else {
+      logger.info('Local files retained (--leave flag set)');
+    }
     
   } catch (error) {
     logger.error('Failed to upload to Firestore:', error);

@@ -42,6 +42,10 @@
 *** Firestore ***
 - use a firestore service account JSON from ~/firestore.json for firestore-admin credentials
 - add an option to the tool to take the analysis.json and screenshots from the analysis step and upload into firestore, using the structures defined in FIRESTORE.md
+- test run results are automatically uploaded to Firestore and Cloud Storage
+  - Test run documents stored in 'test-runs' collection with results as subcollection
+  - Screenshots stored in Cloud Storage under 'test-runs/{analysisId}/{timestamp}'
+  - Both upload and test-run commands clean up local files by default (use --leave flag to keep them)
 
 
 *** Build instructions ***
@@ -55,49 +59,46 @@ docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.q
 2. Upload analysis to Firestore (includes test data):
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
+# Upload and keep local files
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json --leave
+
 3. Query analyses from Firestore:
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query --limit 5
 
 4. Query analyses with filters:
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query --customer PXL_KISQ --limit 5
 
-5. Export test data for UI review:
-docker run --rm -v ./output:/app/output form-shot-runtime export-for-review /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
-
-6. Import reviewed test data:
-docker run --rm -v ./output:/app/output form-shot-runtime import-reviewed /app/output/reviewed_test_data.json /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
-
-7. Generate pattern statistics:
+5. Generate pattern statistics:
 docker run --rm -v ./output:/app/output form-shot-runtime pattern-stats
 
-8. Export unknown fields for classification:
+6. Export unknown fields for classification:
 docker run --rm -v ./output:/app/output form-shot-runtime export-unknown
 
-9. Query test cases from Firestore (sub-collection queries):
+7. Query test cases from Firestore (sub-collection queries):
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --customer PXL_KISQ --status draft --limit 10
 
-10. Get complete analysis with test cases:
+8. Get complete analysis with test cases:
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime get-analysis PXL_KISQ_qa-test_sf36-gad7_en_v1
 
-11. Update individual test case status:
+9. Update individual test case status:
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime update-test-case PXL_KISQ_qa-test_sf36-gad7_en_v1 q1_ choice_1__0 approved --reviewer user123
 
-12. Execute test cases on survey form (test run):
+10. Execute test cases on survey form (test run):
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ
 
-13. Complete workflow (analyze + upload + test):
+# Execute test run and keep local files
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ --leave
+
+11. Complete workflow (analyze + upload + test):
 # Step 1: Analyze (now includes automatic test data generation)
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
 
 # Step 2: Upload results (test cases stored in sub-collections)
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
-# Step 3: Execute test cases on the live form
+# Step 3: Execute test cases on the live form (results uploaded to Firestore & Cloud Storage automatically)
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ
 
 # Step 4: Query specific test cases
 docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query-test-cases --analysis PXL_KISQ_qa-test_sf36-gad7_en_v1 --status draft
-
-# Step 5: Export for UI review (optional)
-docker run --rm -v ./output:/app/output form-shot-runtime export-for-review /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 

@@ -101,6 +101,52 @@ This document outlines the proposed Firestore database structure for migrating t
 }
 ```
 
+### Primary Collection: `test-runs`
+
+**Document ID**: `{analysisId}_{timestamp}` (e.g., "PXL_KISQ_qa-test_sf36-gad7_en_v1_1701234567890")
+
+**Document Schema**:
+```javascript
+{
+  runId: string,                 // Document ID
+  analysisId: string,            // Reference to survey-analyses document
+  url: string,                   // Survey URL tested
+  startTime: timestamp,          // Test run start time
+  endTime: timestamp,            // Test run end time
+  totalDuration: number,         // Duration in milliseconds
+  fieldsProcessed: number,       // Number of fields tested
+  testCasesExecuted: number,     // Total test cases run
+  successfulTestCases: number,   // Successfully applied test cases
+  failedTestCases: number,       // Failed test cases
+  validationErrorsFound: number, // Validation errors detected
+  screenshotsPath: string,       // Base path in Cloud Storage
+  status: string,                // "completed", "completed_with_failures"
+  createdAt: timestamp
+}
+```
+
+### Subcollection: `test-runs/{runId}/results`
+
+**Document ID**: `{fieldId}_{testCaseId}` (e.g., "q1_choice_0")
+
+**Document Schema**:
+```javascript
+{
+  fieldId: string,               // Field document ID
+  testCaseId: string,            // Test case ID
+  questionNumber: string,        // Question number for reference
+  testCaseValue: any,            // Value applied to field
+  applied: boolean,              // Whether value was successfully applied
+  validationTriggered: boolean,  // Whether validation was triggered
+  validationMessages: array<string>, // Validation messages if any
+  screenshotPath: string,        // Filename in Cloud Storage
+  screenshotUrl: string,         // Direct URL to screenshot
+  error: string,                 // Error message if failed
+  duration: number,              // Duration in milliseconds
+  timestamp: timestamp           // Result timestamp
+}
+```
+
 ## Indexing Strategy
 
 ### Composite Indexes
@@ -147,6 +193,14 @@ collection("survey-analyses")
   │   │   │   │   │   ├── question_1_screenshot.png
   │   │   │   │   │   ├── question_2_screenshot.png
   │   │   │   │   │   └── ...
+
+/test-runs/
+  ├── {analysisId}/
+  │   ├── {timestamp}/
+  │   │   ├── test_1_choice_0_1701234567890.png
+  │   │   ├── test_1_1_choice_1_1701234567891.png
+  │   │   ├── test_2_text_short_1701234567892.png
+  │   │   └── ...
 ```
 
 ### File Naming Convention

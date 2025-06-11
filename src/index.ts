@@ -44,9 +44,10 @@ program
   .command('upload')
   .description('Upload analysis results to Firestore')
   .argument('<analysis-json>', 'Path to analysis.json file')
-  .action(async (analysisJsonPath: string) => {
+  .option('--leave', 'Keep local output files after upload (default: remove)')
+  .action(async (analysisJsonPath: string, options) => {
     try {
-      await uploadToFirestore(analysisJsonPath);
+      await uploadToFirestore(analysisJsonPath, options.leave || false);
     } catch (error) {
       logger.error('Upload failed:', error);
       process.exit(1);
@@ -163,6 +164,7 @@ program
   .option('-o, --output <dir>', 'Output directory for test results', './output/test-runs')
   .option('-d, --delay <ms>', 'Delay after field input (ms)', '500')
   .option('--skip-validation', 'Skip validation message detection')
+  .option('--leave', 'Keep local output files after upload (default: remove)')
   .action(async (analysisId: string, url: string, options) => {
     try {
       const testRunOptions = {
@@ -170,7 +172,8 @@ program
         url,
         outputDir: options.output,
         delay: parseInt(options.delay) || 500,
-        skipValidation: options.skipValidation || false
+        skipValidation: options.skipValidation || false,
+        leaveFiles: options.leave || false
       };
       
       await runTests(testRunOptions);
