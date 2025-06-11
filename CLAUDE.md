@@ -37,7 +37,18 @@
 - move focus away from the field, take a screenshot of the same div for that question as the analysis
 - Whenever a question value changes and the focus moves away from the input field this can cause:
     - validation rules to fire which will display messages underneath the input
+    - it may cause new questions to become visible further down the page - check if new questions appear and add them to the result, including the question and value that were used to trigger them
 - do not use data-question-id= in selectors 
+- the main page structure is contained in 
+`<div id="root">
+   <div>
+     <div>left hand panel, progress and language selector - hidden for width less than 768px </div>
+     <div id=survey-body-container>form with all form fields</div>
+     <div>navigation button(s) - could be next, next and previous, previous and finish survey. Ordering for a form is consistent for languages, but button text may change for other languages</div> 
+   <div>
+ </div>`
+- A form contains fields, a from can navigate to the next form, which can have the same question numbers as the previous form. You can only navigate to the next form if there are valid values in each required field. Some forms contain no fields. Each form contains a <p>long form name</p> and an <h3>short form name</h3> before the first question. A survey is the collection of all forms. A survey should contain the analysis of all forms. The final form is identified by the presence of the "Finish Survey" navigation button. For each form, record which of the next, previous, finish survey buttons were displayed as an ordered array.
+
 
 *** Firestore ***
 - use a firestore service account JSON from ~/firestore.json for firestore-admin credentials
