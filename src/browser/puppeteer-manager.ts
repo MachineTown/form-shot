@@ -46,7 +46,7 @@ export class PuppeteerManager {
     });
 
     // Wait for potential dynamic content to load
-    await this.page.waitForTimeout(3000);
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   getPage(): Page {

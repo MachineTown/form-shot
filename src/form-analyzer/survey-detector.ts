@@ -28,7 +28,7 @@ export class SurveyFormDetector {
     }, rightPanel);
     
     // Wait a bit for any animations/rendering
-    await page.waitForTimeout(500);
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Extract form title and short name
     const { longTitle, shortName } = await this.extractFormTitles(page);
@@ -91,7 +91,7 @@ export class SurveyFormDetector {
     }, rightPanelSelector);
 
     // Wait for any lazy-loaded content to appear after scrolling
-    await page.waitForTimeout(3000);
+    await new Promise(resolve => setTimeout(resolve, 3000));
     logger.debug('Completed scrolling and waiting for lazy-loaded content');
   }
 

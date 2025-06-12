@@ -132,7 +132,7 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
           
           // Wait for potential validation
           if (!options.skipValidation) {
-            await page.waitForTimeout(options.delay || 500);
+            await new Promise(resolve => setTimeout(resolve, options.delay || 500));
             
             // Check for validation messages
             const validationResult = await checkValidationMessages(page, field);
@@ -167,11 +167,11 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
         results.push(result);
         
         // Small delay between test cases
-        await page.waitForTimeout(100);
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
       // Delay between fields
-      await page.waitForTimeout(200);
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     const endTime = new Date();

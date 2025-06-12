@@ -69,7 +69,7 @@ export class ScreenshotService {
         deviceScaleFactor: currentViewport.deviceScaleFactor || 1
       });
 
-      await page.waitForTimeout(500); // Allow viewport to adjust
+      await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
       // Take screenshot
       const filename = `form_${formIndex + 1}_on_entry_${tuple.customerId}_${tuple.studyId}.png`;
@@ -77,7 +77,7 @@ export class ScreenshotService {
 
       // Restore original viewport
       await page.setViewport(currentViewport);
-      await page.waitForTimeout(500);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       logger.info(`On-entry screenshot saved: ${filename}`);
       return filename;
@@ -113,7 +113,7 @@ export class ScreenshotService {
         deviceScaleFactor: currentViewport.deviceScaleFactor || 1
       });
 
-      await page.waitForTimeout(500); // Allow viewport to adjust
+      await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
       // Take screenshot
       const filename = `form_${formIndex + 1}_on_exit_${tuple.customerId}_${tuple.studyId}.png`;
@@ -121,7 +121,7 @@ export class ScreenshotService {
 
       // Restore original viewport
       await page.setViewport(currentViewport);
-      await page.waitForTimeout(500);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       logger.info(`On-exit screenshot saved: ${filename}`);
       return filename;
@@ -145,7 +145,7 @@ export class ScreenshotService {
         }
       }, field.cardBoxSelector);
 
-      await page.waitForTimeout(1000);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Wait for element to be visible
       await page.waitForFunction((selector) => {
@@ -182,14 +182,14 @@ export class ScreenshotService {
       // Take screenshot of specific element
       const element = await page.$(selector);
       if (element) {
-        await element.screenshot({ path: screenshotPath });
+        await element.screenshot({ path: screenshotPath } as any);
       } else {
         // Fallback to full page if element not found
-        await page.screenshot({ path: screenshotPath, fullPage: true });
+        await page.screenshot({ path: screenshotPath, fullPage: true } as any);
       }
     } else {
       // Take full page screenshot
-      await page.screenshot({ path: screenshotPath, fullPage: true });
+      await page.screenshot({ path: screenshotPath, fullPage: true } as any);
     }
 
     return filename;

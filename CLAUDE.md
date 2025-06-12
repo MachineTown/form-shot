@@ -58,6 +58,12 @@
   - Screenshots stored in Cloud Storage under 'test-runs/{analysisId}/{timestamp}'
   - Both upload and test-run commands clean up local files by default (use --leave flag to keep them)
 
+*** Frontend ***
+Use mui-x community edition component library (https://github.com/mui/mui-x) and mui https://github.com/mui/material-ui
+Use firestore and firebase auth and cloud storage 
+Use tailwind
+Use npm
+Use latest React
 
 *** Screenshots ***
 - The analyse tool should allow a specification of the viewport - default should be 767px x 1024px

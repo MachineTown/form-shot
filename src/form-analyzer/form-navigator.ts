@@ -71,7 +71,7 @@ export class FormNavigator {
       try {
         await this.fillField(page, field);
         // Small delay between fields to simulate user interaction
-        await page.waitForTimeout(300);
+        await new Promise(resolve => setTimeout(resolve, 300));
       } catch (error) {
         logger.error(`Failed to fill field ${field.questionNumber}:`, error);
         throw error;
@@ -184,7 +184,7 @@ export class FormNavigator {
         const closeButton = await page.$(selector);
         if (closeButton) {
           await closeButton.click();
-          await page.waitForTimeout(500);
+          await new Promise(resolve => setTimeout(resolve, 500));
           return;
         }
       } catch (error) {
@@ -194,7 +194,7 @@ export class FormNavigator {
     
     // If no close button found, try pressing Escape
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   async clickNavigationButton(page: Page, type: 'next' | 'previous' | 'finish'): Promise<void> {
@@ -268,7 +268,7 @@ export class FormNavigator {
       // Wait for navigation to complete (URL change or DOM update)
       await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {
         // If no navigation, wait for DOM changes
-        return page.waitForTimeout(2000);
+        return new Promise(resolve => setTimeout(resolve, 2000));
       });
       
       // Check if we're on a new form by looking for title changes
