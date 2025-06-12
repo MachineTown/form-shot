@@ -49,7 +49,7 @@ RUN usermod -l appuser node && groupmod -n appuser node
 RUN mkdir -p /app/output && chmod 777 /app/output && chown -R appuser:appuser /app/output
 
 # Set ownership of app directory
-RUN chown -R appuser:appuser /app
+# RUN chown -R appuser:appuser /app
 
 # Create necessary directories for Chrome
 RUN mkdir -p /home/appuser/.local/share/applications && \

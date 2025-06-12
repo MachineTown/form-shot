@@ -2,7 +2,7 @@
 - Build a tool that given a URL and a reference tuple string will open the web page (assume no auth step), analyse the form fields on the right hand panel.
 - The right hand panel is scrollable, ensure that the tool scrolls to the bottom to see all the form fields. Store the height of viewport that would be needed to see the whole form without scrolling. 
 - Only include the panel within the div with id=survey-body-container in the analysis of the form fields.
-- For each form identify the long title and short name from the top of the form.
+- For each form identify the long title and short name from the top of the form. create selectors for each of longtitle and shortname starting with the <div id=survey-body-container> - look for first <p> inside that div and then first <h3>. Don't use any pattern matching on the content of those.
 - For each form field (question), identify and record in a JSON structure:
     - question number string e.g. 1. or 1.2 or 2.3.1
     - The question text
@@ -47,7 +47,7 @@
      <div>navigation button(s) - could be next, next and previous, previous and finish survey. Ordering for a form is consistent for languages, but button text may change for other languages</div> 
    <div>
  </div>`
-- A form contains fields, a from can navigate to the next form, which can have the same question numbers as the previous form. You can only navigate to the next form if there are valid values in each required field. Some forms contain no fields. Each form contains a <p>long form name</p> and an <h3>short form name</h3> before the first question. A survey is the collection of all forms. A survey should contain the analysis of all forms. The final form is identified by the presence of the "Finish Survey" navigation button. For each form, record which of the next, previous, finish survey buttons were displayed as an ordered array.
+- A form contains fields, a from can navigate to the next form, which can have the same question numbers as the previous form. You can only navigate to the next form if there are valid values in each required field. Some forms contain no fields. Each form contains a <p>long title</p> and an <h3>short name</h3> before the first question. A survey is the collection of all forms. A survey should contain the analysis of all forms. The final form is identified by the presence of the "Finish Survey" navigation button. For each form, record which of the next, previous, finish survey buttons were displayed as an ordered array.
 
 
 *** Firestore ***
@@ -65,9 +65,11 @@
 - On display of a new form, before entering any data, extend the viewport to the maximum needed to include the full form and take a screenshot - this is the 'on-entry' screenshot. Return viewport to the original size.
 - After completing the questions, in preparation for navigation to next form, before pressing next button. Extend the viewport to the maximum needed to include the full form and take a screenshot - this is the 'on-exit' screenshot. Return viewport to the original size.
 - When identifying each question in the form, take a screenshot of that question which includes the frame and contents of that question.
+- When running through test-cases move focus away from the field after setting value, take a screenshot of the same div for that question as used in the analysis
 
 *** Build instructions ***
 use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
+After you make chaneges to the code, always rebuild the code and container
 
 *** Before commit ***
 - Ensure that the FIRESTORE.md is still accurate in light of any changes

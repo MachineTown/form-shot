@@ -1,8 +1,8 @@
 import { Page } from 'puppeteer';
-import { SurveyForm, SurveyField, SurveyTuple } from '../utils/types';
 import { ScreenshotService } from '../services/screenshot-service';
-import { logger } from '../utils/logger';
 import { testDataGenerator } from '../test-generator/test-data-generator';
+import { logger } from '../utils/logger';
+import { SurveyField, SurveyForm, SurveyTuple } from '../utils/types';
 
 export class SurveyFormDetector {
   
@@ -16,6 +16,19 @@ export class SurveyFormDetector {
     
     // Scroll to bottom to ensure all fields are loaded
     await this.scrollToBottom(page, rightPanel);
+    
+    // Scroll back to top to ensure title elements are accessible
+    await page.evaluate((selector) => {
+      const element = document.querySelector(selector);
+      if (element) {
+        element.scrollTop = 0;
+      } else {
+        window.scrollTo(0, 0);
+      }
+    }, rightPanel);
+    
+    // Wait a bit for any animations/rendering
+    await page.waitForTimeout(500);
     
     // Extract form title and short name
     const { longTitle, shortName } = await this.extractFormTitles(page);
@@ -83,69 +96,56 @@ export class SurveyFormDetector {
   }
 
   private async extractFormTitles(page: Page): Promise<{ longTitle: string; shortName: string }> {
-    const titles = await page.evaluate(() => {
-      // According to requirements: Each form contains a <p>long form name</p> and an <h3>short form name</h3> before the first question
-      const surveyBody = document.querySelector('#survey-body-container');
-      if (!surveyBody) {
-        return {
-          longTitle: 'Survey Form',
-          shortName: 'Survey'
-        };
-      }
-
-      let longTitle = '';
-      let shortName = '';
-
-      // Look for p tag (long form name) before first CardBox
-      const firstCardBox = surveyBody.querySelector('[class*="CardBox"]');
-      if (firstCardBox) {
-        // Get all p and h3 elements before the first CardBox
-        const allElements = Array.from(surveyBody.querySelectorAll('p, h3'));
-        const firstCardBoxIndex = allElements.findIndex(el => el.closest('[class*="CardBox"]'));
-        
-        // Elements before first CardBox
-        const titleElements = firstCardBoxIndex > 0 ? allElements.slice(0, firstCardBoxIndex) : allElements;
-        
-        // Look for p tag (long title)
-        const pElements = titleElements.filter(el => el.tagName === 'P');
-        if (pElements.length > 0) {
-          longTitle = pElements[0].textContent?.trim() || '';
+    try {
+      // Find the correct p and h3 tags that are together (form titles)
+      const titles = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) {
+          return {
+            longTitle: 'Title not found',
+            shortName: 'Title not found'
+          };
         }
         
-        // Look for h3 tag (short name)
-        const h3Elements = titleElements.filter(el => el.tagName === 'H3');
-        if (h3Elements.length > 0) {
-          shortName = h3Elements[0].textContent?.trim() || '';
-        }
-      }
-
-      // Fallback: look for any title-like elements
-      if (!longTitle) {
-        const titleSelectors = ['h1', 'h2', 'h3', 'p', '[class*="title"]'];
-        for (const selector of titleSelectors) {
-          const element = surveyBody.querySelector(selector);
-          if (element) {
-            const text = element.textContent?.trim() || '';
-            if (text.length > 0 && !text.match(/^\d+\./)) { // Exclude question numbers
-              longTitle = text;
+        // Find all p tags in the container
+        const allPs = container.querySelectorAll('p');
+        let formTitleP = null;
+        let formTitleH3 = null;
+        
+        // Look for a p tag that has an h3 sibling in the same parent
+        for (const p of allPs) {
+          const parent = p.parentElement;
+          if (parent) {
+            const h3InParent = parent.querySelector('h3');
+            if (h3InParent) {
+              // Found the p and h3 that are together
+              formTitleP = p;
+              formTitleH3 = h3InParent;
               break;
             }
           }
         }
-      }
-
-      // If no short name found, derive from long title
-      if (!shortName && longTitle) {
-        shortName = longTitle.split(/[.!?:]|\s+/).slice(0, 3).join(' ').trim();
-      }
-
+        
+        const longTitle = formTitleP?.textContent?.trim() || 'Title not found';
+        const shortName = formTitleH3?.textContent?.trim() || 'Title not found';
+        
+        return {
+          longTitle,
+          shortName
+        };
+      });
+      
       return {
-        longTitle: longTitle || 'Survey Form',
-        shortName: shortName || 'Survey'
+        longTitle: titles.longTitle,
+        shortName: titles.shortName
       };
-    });
-
-    return titles;
+    } catch (error) {
+      logger.error(`Error in extractFormTitles: ${error}`);
+      return {
+        longTitle: 'Title not found',
+        shortName: 'Title not found'
+      };
+    }
   }
 
   private async detectFormFields(page: Page, rightPanelSelector: string, tuple: SurveyTuple, screenshotService: ScreenshotService, formIndex?: number): Promise<SurveyField[]> {
