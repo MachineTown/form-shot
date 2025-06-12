@@ -62,6 +62,10 @@
 *** Build instructions ***
 use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
 
+*** Before commit ***
+- Ensure that the FIRESTORE.md is still accurate in light of any changes
+- Ensure that README.md is still accurate in light of any changes
+
 *** Commands ***
 
 1. Analyze survey (with automatic test data generation):
