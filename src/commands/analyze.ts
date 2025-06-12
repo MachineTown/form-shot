@@ -89,15 +89,29 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
           
           // Additional check: verify we're actually on a different form
           const newFormPreview = await puppeteerManager.getPage().evaluate(() => {
-            const surveyBody = document.querySelector('#survey-body-container');
-            if (!surveyBody) return { title: '', questionCount: 0 };
+            const container = document.querySelector('#survey-body-container');
+            if (!container) return { title: '', questionCount: 0 };
             
-            // Get first title-like element
-            const titleElement = surveyBody.querySelector('h1, h2, h3, p');
-            const title = titleElement?.textContent?.trim() || '';
+            // Use same title detection logic as extractFormTitles()
+            const allPs = container.querySelectorAll('p');
+            let formTitleP = null;
+            
+            // Look for a p tag that has an h3 sibling in the same parent
+            for (const p of allPs) {
+              const parent = p.parentElement;
+              if (parent) {
+                const h3InParent = parent.querySelector('h3');
+                if (h3InParent) {
+                  formTitleP = p;
+                  break;
+                }
+              }
+            }
+            
+            const title = formTitleP?.textContent?.trim() || 'Title not found';
             
             // Count questions
-            const questions = surveyBody.querySelectorAll('[class*="CardBox"]');
+            const questions = container.querySelectorAll('[class*="CardBox"]');
             
             return { title, questionCount: questions.length };
           });
