@@ -13,6 +13,9 @@ export interface SurveyForm {
   viewportHeight: number;
   url: string;
   timestamp: string;
+  navigationButtons: NavigationButton[];
+  formIndex?: number;
+  fullFormScreenshot?: string;
 }
 
 export interface SurveyField {
@@ -184,6 +187,23 @@ export interface UnknownField {
   needsClassification: boolean;
 }
 
+export interface NavigationButton {
+  type: 'next' | 'previous' | 'finish';
+  text: string;
+  selector: string;
+  isEnabled: boolean;
+}
+
+export interface Survey {
+  metadata: {
+    tuple: SurveyTuple;
+    analysisDate: string;
+    url: string;
+    totalForms: number;
+  };
+  forms: SurveyForm[];
+}
+
 export interface AnalysisOutput {
   metadata: {
     tuple: SurveyTuple;
@@ -191,4 +211,15 @@ export interface AnalysisOutput {
     url: string;
   };
   form: SurveyForm;
+}
+
+export interface TestRunResult {
+  fieldId: string;
+  questionNumber: string;
+  testCaseId: string;
+  value: string | number;
+  screenshotPath: string;
+  timestamp: string;
+  triggeredFields?: SurveyField[];
+  validationErrors?: string[];
 }

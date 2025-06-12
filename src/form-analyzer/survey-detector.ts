@@ -30,7 +30,9 @@ export class SurveyFormDetector {
       fields,
       viewportHeight,
       url: page.url(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      navigationButtons: [],  // Will be filled by the analyzer
+      formIndex: 0  // Will be set by the analyzer
     };
   }
 
@@ -83,32 +85,59 @@ export class SurveyFormDetector {
 
   private async extractFormTitles(page: Page): Promise<{ longTitle: string; shortName: string }> {
     const titles = await page.evaluate(() => {
-      // Look for form titles in common locations
-      const titleSelectors = [
-        'h1', 'h2', 'h3',
-        '[class*="title"]',
-        '[class*="header"]',
-        '[class*="form-title"]',
-        '.survey-title'
-      ];
+      // According to requirements: Each form contains a <p>long form name</p> and an <h3>short form name</h3> before the first question
+      const surveyBody = document.querySelector('#survey-body-container');
+      if (!surveyBody) {
+        return {
+          longTitle: 'Survey Form',
+          shortName: 'Survey'
+        };
+      }
 
       let longTitle = '';
       let shortName = '';
 
-      for (const selector of titleSelectors) {
-        const elements = document.querySelectorAll(selector);
-        for (const element of elements) {
-          const text = element.textContent?.trim() || '';
-          if (text.length > 0) {
-            if (!longTitle || text.length > longTitle.length) {
+      // Look for p tag (long form name) before first CardBox
+      const firstCardBox = surveyBody.querySelector('[class*="CardBox"]');
+      if (firstCardBox) {
+        // Get all p and h3 elements before the first CardBox
+        const allElements = Array.from(surveyBody.querySelectorAll('p, h3'));
+        const firstCardBoxIndex = allElements.findIndex(el => el.closest('[class*="CardBox"]'));
+        
+        // Elements before first CardBox
+        const titleElements = firstCardBoxIndex > 0 ? allElements.slice(0, firstCardBoxIndex) : allElements;
+        
+        // Look for p tag (long title)
+        const pElements = titleElements.filter(el => el.tagName === 'P');
+        if (pElements.length > 0) {
+          longTitle = pElements[0].textContent?.trim() || '';
+        }
+        
+        // Look for h3 tag (short name)
+        const h3Elements = titleElements.filter(el => el.tagName === 'H3');
+        if (h3Elements.length > 0) {
+          shortName = h3Elements[0].textContent?.trim() || '';
+        }
+      }
+
+      // Fallback: look for any title-like elements
+      if (!longTitle) {
+        const titleSelectors = ['h1', 'h2', 'h3', 'p', '[class*="title"]'];
+        for (const selector of titleSelectors) {
+          const element = surveyBody.querySelector(selector);
+          if (element) {
+            const text = element.textContent?.trim() || '';
+            if (text.length > 0 && !text.match(/^\d+\./)) { // Exclude question numbers
               longTitle = text;
-            }
-            if (!shortName) {
-              // Extract a shorter version (first few words or up to first punctuation)
-              shortName = text.split(/[.!?:]|\\s+/).slice(0, 3).join(' ').trim();
+              break;
             }
           }
         }
+      }
+
+      // If no short name found, derive from long title
+      if (!shortName && longTitle) {
+        shortName = longTitle.split(/[.!?:]|\s+/).slice(0, 3).join(' ').trim();
       }
 
       return {

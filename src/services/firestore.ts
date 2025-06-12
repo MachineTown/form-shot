@@ -2,7 +2,7 @@ import * as admin from 'firebase-admin';
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { logger } from '../utils/logger';
-import { AnalysisOutput, SurveyField } from '../utils/types';
+import { AnalysisOutput, Survey, SurveyField, SurveyForm } from '../utils/types';
 import { TestRunResult } from '../commands/test-run';
 
 export class FirestoreService {
@@ -51,6 +51,173 @@ export class FirestoreService {
       logger.info('Firestore service initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize Firestore service:', error);
+      throw error;
+    }
+  }
+
+  async uploadSurvey(survey: Survey, screenshotsDir: string): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    const { metadata, forms } = survey;
+    const { tuple } = metadata;
+
+    try {
+      // Create document ID from tuple
+      const docId = `${tuple.customerId}_${tuple.studyId}_${tuple.packageName}_${tuple.language}_${tuple.version}`;
+      
+      logger.info(`Uploading survey to Firestore with ID: ${docId}`);
+
+      // Upload screenshots for all forms to Cloud Storage first
+      const screenshotsPath = `survey-screenshots/${tuple.customerId}/${tuple.studyId}/${tuple.packageName}/${tuple.language}/${tuple.version}`;
+      const uploadedScreenshots: Record<string, string> = {};
+      
+      for (const form of forms) {
+        const formScreenshots = await this.uploadScreenshots(form.fields, screenshotsDir, screenshotsPath);
+        Object.assign(uploadedScreenshots, formScreenshots);
+      }
+
+      // Prepare main document data
+      const surveyDoc = {
+        // Tuple fields
+        customerId: tuple.customerId,
+        studyId: tuple.studyId,
+        packageName: tuple.packageName,
+        language: tuple.language,
+        version: tuple.version,
+        
+        // Survey metadata
+        analysisDate: admin.firestore.Timestamp.fromDate(new Date(metadata.analysisDate)),
+        url: metadata.url,
+        totalForms: metadata.totalForms,
+        
+        // Summary data from all forms
+        totalFields: forms.reduce((sum, form) => sum + form.fields.length, 0),
+        hasTestData: forms.some(form => form.fields.some(field => field.testData)),
+        
+        // Cloud Storage references
+        screenshotsPath: screenshotsPath,
+        
+        // Status and tracking
+        status: 'completed',
+        
+        // Audit fields
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      // Start batch write
+      const batch = this.db.batch();
+
+      // Add main survey document
+      const surveyRef = this.db.collection('survey-analyses').doc(docId);
+      batch.set(surveyRef, surveyDoc);
+
+      // Add forms as subcollection documents
+      const formsCollection = surveyRef.collection('forms');
+      
+      for (let formIndex = 0; formIndex < forms.length; formIndex++) {
+        const form = forms[formIndex];
+        const formId = `form_${formIndex + 1}`;
+        const formRef = formsCollection.doc(formId);
+        
+        // Create form document
+        const formDoc = {
+          formIndex: formIndex,
+          longTitle: form.longTitle,
+          shortName: form.shortName,
+          viewportHeight: form.viewportHeight,
+          timestamp: admin.firestore.Timestamp.fromDate(new Date(form.timestamp)),
+          fieldsCount: form.fields.length,
+          navigationButtons: form.navigationButtons || [],
+          order: formIndex + 1,
+          hasTestData: form.fields.some(field => field.testData),
+          testDataSummary: this.calculateTestDataSummary(form.fields)
+        };
+        
+        batch.set(formRef, formDoc);
+        
+        // Add fields as subcollection documents under each form
+        const fieldsCollection = formRef.collection('fields');
+        
+        for (let fieldIndex = 0; fieldIndex < form.fields.length; fieldIndex++) {
+          const field = form.fields[fieldIndex];
+          const fieldId = field.questionNumber ? `q${field.questionNumber.replace(/\./g, '_')}` : `field_${fieldIndex + 1}`;
+          const fieldRef = fieldsCollection.doc(fieldId);
+          
+          // Create field document without embedded test cases
+          const fieldDoc = {
+            questionNumber: field.questionNumber,
+            questionText: field.questionText,
+            inputType: field.inputType,
+            isRequired: field.isRequired,
+            choices: field.choices || [],
+            selector: field.selector,
+            cardBoxSelector: field.cardBoxSelector,
+            screenshotFilename: field.screenshotPath,
+            screenshotUrl: uploadedScreenshots[field.screenshotPath] || '',
+            order: fieldIndex + 1,
+            formIndex: formIndex,
+            // Store only test data metadata, not the test cases themselves
+            testData: field.testData ? {
+              detectedType: field.testData.detectedType,
+              confidence: field.testData.confidence,
+              detectionMethod: field.testData.detectionMethod,
+              generatedAt: field.testData.generatedAt,
+              summary: field.testData.summary,
+              metadata: field.testData.metadata
+            } : undefined
+          };
+          
+          batch.set(fieldRef, fieldDoc);
+          
+          // Add test cases as sub-collection documents
+          if (field.testData && field.testData.testCases.length > 0) {
+            const testCasesCollection = fieldRef.collection('test-cases');
+            
+            field.testData.testCases.forEach((testCase) => {
+              const testCaseRef = testCasesCollection.doc(testCase.id);
+              const testCaseDoc = {
+                id: testCase.id,
+                type: testCase.type,
+                value: testCase.value,
+                position: testCase.position,
+                description: testCase.description,
+                source: testCase.source,
+                provenance: testCase.provenance,
+                status: testCase.status,
+                quality: testCase.quality,
+                // Add references for easier querying
+                fieldId: fieldId,
+                formId: formId,
+                formIndex: formIndex,
+                questionNumber: field.questionNumber,
+                analysisId: docId,
+                customerId: tuple.customerId,
+                studyId: tuple.studyId,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              };
+              
+              batch.set(testCaseRef, testCaseDoc);
+            });
+          }
+        }
+      }
+
+      // Update customer metadata
+      await this.updateCustomerMetadata(tuple.customerId, tuple.studyId);
+      
+      // Update survey metadata
+      await this.updateSurveyMetadata(tuple.studyId, tuple.packageName, tuple.language, tuple.version);
+
+      // Commit batch
+      await batch.commit();
+      
+      logger.info(`Successfully uploaded survey with ${forms.length} forms and ${forms.reduce((sum, f) => sum + f.fields.length, 0)} total fields to Firestore`);
+      
+    } catch (error) {
+      logger.error('Failed to upload survey to Firestore:', error);
       throw error;
     }
   }

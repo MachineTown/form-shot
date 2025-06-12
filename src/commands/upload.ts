@@ -1,5 +1,5 @@
 import { FirestoreService } from '../services/firestore';
-import { AnalysisOutput } from '../utils/types';
+import { Survey } from '../utils/types';
 import { logger } from '../utils/logger';
 import { readFileSync, existsSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
@@ -16,45 +16,53 @@ export async function uploadToFirestore(analysisJsonPath: string, leaveFiles: bo
     logger.info(`Reading analysis from: ${analysisJsonPath}`);
     
     // Read and parse analysis.json
-    const analysisData = JSON.parse(readFileSync(analysisJsonPath, 'utf8')) as AnalysisOutput;
+    const surveyData = JSON.parse(readFileSync(analysisJsonPath, 'utf8')) as Survey;
     
     // Validate required structure
-    if (!analysisData.metadata || !analysisData.form) {
-      throw new Error('Invalid analysis file structure. Missing metadata or form data.');
+    if (!surveyData.metadata || !surveyData.forms || surveyData.forms.length === 0) {
+      throw new Error('Invalid analysis file structure. Missing metadata or forms data.');
     }
     
-    if (!analysisData.metadata.tuple) {
+    if (!surveyData.metadata.tuple) {
       throw new Error('Invalid analysis file structure. Missing tuple information.');
     }
     
-    logger.info(`Found analysis for: ${analysisData.metadata.tuple.customerId}/${analysisData.metadata.tuple.studyId}`);
-    logger.info(`Form: "${analysisData.form.longTitle}" with ${analysisData.form.fields.length} fields`);
+    logger.info(`Found survey for: ${surveyData.metadata.tuple.customerId}/${surveyData.metadata.tuple.studyId}`);
+    logger.info(`Survey has ${surveyData.forms.length} forms with ${surveyData.forms.reduce((sum, f) => sum + f.fields.length, 0)} total fields`);
     
     // Screenshots directory is the same as analysis.json directory
     const screenshotsDir = dirname(analysisJsonPath);
     
-    // Verify screenshots exist
-    const missingScreenshots = analysisData.form.fields
-      .filter(field => field.screenshotPath)
-      .filter(field => !existsSync(join(screenshotsDir, field.screenshotPath)));
+    // Verify screenshots exist for all forms
+    const missingScreenshots: {formIndex: number; field: any}[] = [];
+    surveyData.forms.forEach((form, formIndex) => {
+      form.fields
+        .filter(field => field.screenshotPath)
+        .filter(field => !existsSync(join(screenshotsDir, field.screenshotPath)))
+        .forEach(field => missingScreenshots.push({formIndex, field}));
+    });
     
     if (missingScreenshots.length > 0) {
       logger.warn(`Missing ${missingScreenshots.length} screenshots:`);
-      missingScreenshots.forEach(field => {
-        logger.warn(`  - ${field.screenshotPath} for question ${field.questionNumber}`);
+      missingScreenshots.forEach(({formIndex, field}) => {
+        logger.warn(`  - Form ${formIndex + 1}: ${field.screenshotPath} for question ${field.questionNumber}`);
       });
     }
     
     // Upload to Firestore
     logger.info('Starting upload to Firestore...');
-    await firestoreService.uploadAnalysis(analysisData, screenshotsDir);
+    await firestoreService.uploadSurvey(surveyData, screenshotsDir);
     
     logger.info('Upload completed successfully!');
     
     // Display summary
-    const { tuple } = analysisData.metadata;
-    logger.info(`Uploaded analysis: ${tuple.customerId}/${tuple.studyId}/${tuple.packageName}/${tuple.language}/${tuple.version}`);
+    const { tuple } = surveyData.metadata;
+    logger.info(`Uploaded survey: ${tuple.customerId}/${tuple.studyId}/${tuple.packageName}/${tuple.language}/${tuple.version}`);
     logger.info(`Document ID: ${tuple.customerId}_${tuple.studyId}_${tuple.packageName}_${tuple.language}_${tuple.version}`);
+    logger.info(`Total forms: ${surveyData.forms.length}`);
+    surveyData.forms.forEach((form, index) => {
+      logger.info(`  Form ${index + 1}: "${form.longTitle}" (${form.fields.length} fields)`);
+    });
     
     // Clean up local files unless --leave flag is set
     if (!leaveFiles) {
