@@ -1,13 +1,12 @@
 import { Page } from 'puppeteer';
 import { SurveyForm, SurveyField, SurveyTuple } from '../utils/types';
+import { ScreenshotService } from '../services/screenshot-service';
 import { logger } from '../utils/logger';
 import { testDataGenerator } from '../test-generator/test-data-generator';
-import { join } from 'path';
-import { mkdirSync } from 'fs';
 
 export class SurveyFormDetector {
   
-  async detectSurveyForm(page: Page, tuple: SurveyTuple): Promise<SurveyForm> {
+  async detectSurveyForm(page: Page, tuple: SurveyTuple, screenshotService: ScreenshotService, formIndex?: number): Promise<SurveyForm> {
     // Find right panel and get its dimensions
     const rightPanel = await this.findRightPanel(page);
     logger.info(`Using container selector: ${rightPanel}`);
@@ -22,7 +21,7 @@ export class SurveyFormDetector {
     const { longTitle, shortName } = await this.extractFormTitles(page);
     
     // Detect all form fields in right panel
-    const fields = await this.detectFormFields(page, rightPanel, tuple);
+    const fields = await this.detectFormFields(page, rightPanel, tuple, screenshotService, formIndex);
     
     return {
       longTitle,
@@ -149,7 +148,7 @@ export class SurveyFormDetector {
     return titles;
   }
 
-  private async detectFormFields(page: Page, rightPanelSelector: string, tuple: SurveyTuple): Promise<SurveyField[]> {
+  private async detectFormFields(page: Page, rightPanelSelector: string, tuple: SurveyTuple, screenshotService: ScreenshotService, formIndex?: number): Promise<SurveyField[]> {
     const fields = await page.evaluate((selector) => {
       // Helper functions that run in browser context
       function extractQuestionText(container: Element): string {
@@ -450,14 +449,12 @@ export class SurveyFormDetector {
 
     logger.info(`Found ${fields.length} survey questions`);
 
-    // Take individual screenshots for each field
+    // Take individual screenshots for each field using new screenshot service
     logger.info(`Taking screenshots for ${fields.length} questions`);
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
-      // Use the question number instead of loop index for screenshot naming
-      const questionNum = field.questionNumber.replace('.', '');
-      const screenshotPath = await this.takeFieldScreenshot(page, field.cardBoxSelector, questionNum, tuple);
-      field.screenshotPath = screenshotPath;
+      const screenshotPath = await screenshotService.takeQuestionScreenshot(page, field, i, tuple, formIndex);
+      field.screenshotPath = screenshotPath || '';
     }
 
     // Generate test data for each field
@@ -478,51 +475,4 @@ export class SurveyFormDetector {
     return fields;
   }
 
-  private async takeFieldScreenshot(page: Page, cardBoxSelector: string, questionNumber: string, tuple: SurveyTuple): Promise<string> {
-    try {
-      logger.debug(`Taking screenshot for question ${questionNumber} with selector: ${cardBoxSelector}`);
-      const cardBoxElement = await page.$(cardBoxSelector);
-      if (!cardBoxElement) {
-        logger.warn(`CardBox element not found for selector: ${cardBoxSelector}`);
-        return '';
-      }
-
-      // Scroll CardBox element into view and wait for it to be visible
-      await page.evaluate((selector) => {
-        const element = document.querySelector(selector);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, cardBoxSelector);
-      await page.waitForTimeout(1000);
-      
-      // Wait for element to be visible
-      await page.waitForFunction((selector) => {
-        const element = document.querySelector(selector) as HTMLElement;
-        return element && element.offsetHeight > 0;
-      }, {}, cardBoxSelector);
-
-      // Generate screenshot filename using question number
-      const filename = `question_${questionNumber}_${tuple.customerId}_${tuple.studyId}.png`;
-      
-      // Create output directory if it doesn't exist
-      const outputDir = join('/app/output', tuple.customerId, tuple.studyId, tuple.packageName, tuple.language, tuple.version);
-      try {
-        mkdirSync(outputDir, { recursive: true });
-      } catch (error) {
-        logger.warn('Failed to create screenshot directory:', error);
-      }
-      
-      const screenshotPath = join(outputDir, filename);
-      
-      // Take screenshot of the entire CardBox container
-      await cardBoxElement.screenshot({ path: screenshotPath });
-      logger.debug(`Screenshot saved: ${filename}`);
-
-      return filename;
-    } catch (error) {
-      logger.error(`Failed to take screenshot for question ${questionNumber}:`, error);
-      return '';
-    }
-  }
 }

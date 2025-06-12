@@ -15,7 +15,8 @@ export interface SurveyForm {
   timestamp: string;
   navigationButtons: NavigationButton[];
   formIndex?: number;
-  fullFormScreenshot?: string;
+  onEntryScreenshot?: string;
+  onExitScreenshot?: string;
 }
 
 export interface SurveyField {

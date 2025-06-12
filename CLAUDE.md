@@ -59,6 +59,13 @@
   - Both upload and test-run commands clean up local files by default (use --leave flag to keep them)
 
 
+*** Screenshots ***
+- The analyse tool should allow a specification of the viewport - default should be 767px x 1024px
+- Establish the vertical viewport for each form that will allow a screenshot to include all questions on the form
+- On display of a new form, before entering any data, extend the viewport to the maximum needed to include the full form and take a screenshot - this is the 'on-entry' screenshot. Return viewport to the original size.
+- After completing the questions, in preparation for navigation to next form, before pressing next button. Extend the viewport to the maximum needed to include the full form and take a screenshot - this is the 'on-exit' screenshot. Return viewport to the original size.
+- When identifying each question in the form, take a screenshot of that question which includes the frame and contents of that question.
+
 *** Build instructions ***
 use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
 

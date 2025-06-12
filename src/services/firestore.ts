@@ -133,7 +133,11 @@ export class FirestoreService {
           navigationButtons: form.navigationButtons || [],
           order: formIndex + 1,
           hasTestData: form.fields.some(field => field.testData),
-          testDataSummary: this.calculateTestDataSummary(form.fields)
+          testDataSummary: this.calculateTestDataSummary(form.fields),
+          onEntryScreenshot: form.onEntryScreenshot || '',
+          onExitScreenshot: form.onExitScreenshot || '',
+          onEntryScreenshotUrl: uploadedScreenshots[form.onEntryScreenshot || ''] || '',
+          onExitScreenshotUrl: uploadedScreenshots[form.onExitScreenshot || ''] || ''
         };
         
         batch.set(formRef, formDoc);
