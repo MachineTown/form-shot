@@ -1,11 +1,11 @@
-import { PuppeteerManager } from '../browser/puppeteer-manager';
-import { SurveyFormDetector } from '../form-analyzer/survey-detector';
-import { FormNavigator } from '../form-analyzer/form-navigator';
-import { ScreenshotService } from '../services/screenshot-service';
-import { SurveyTuple, Survey, SurveyForm } from '../utils/types';
-import { logger } from '../utils/logger';
-import { writeFileSync, mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { PuppeteerManager } from '../browser/puppeteer-manager';
+import { FormNavigator } from '../form-analyzer/form-navigator';
+import { SurveyFormDetector } from '../form-analyzer/survey-detector';
+import { ScreenshotService } from '../services/screenshot-service';
+import { logger } from '../utils/logger';
+import { Survey, SurveyForm, SurveyTuple } from '../utils/types';
 
 export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<void> {
   const puppeteerManager = new PuppeteerManager();
@@ -108,11 +108,6 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
           if (newFormPreview.title === form.longTitle && newFormPreview.questionCount === form.fields.length) {
             logger.warn('Detected same form after navigation, might be stuck. Stopping analysis.');
             break;
-          }
-          
-          // Special check for GAD-7 which should have 7 questions
-          if (newFormPreview.questionCount === 7) {
-            logger.info('Found form with 7 questions - likely GAD-7');
           }
           
           formIndex++;
