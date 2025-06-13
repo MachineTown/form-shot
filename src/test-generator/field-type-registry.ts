@@ -297,6 +297,8 @@ export class FieldTypeRegistry {
     }
 
     switch (inputType.toLowerCase()) {
+      case 'vas':
+        return 'VAS';
       case 'email':
         return 'email';
       case 'tel':

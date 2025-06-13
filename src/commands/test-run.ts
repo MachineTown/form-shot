@@ -245,6 +245,10 @@ async function applyTestCaseValue(page: any, field: any, testCase: any): Promise
   await page.waitForSelector(selector, { timeout: 5000 });
   
   switch (field.inputType.toLowerCase()) {
+    case 'vas':
+      await applyVASValue(page, field, testCase);
+      break;
+      
     case 'radio':
       await applyRadioValue(page, field, testCase);
       break;
@@ -273,6 +277,68 @@ async function applyTestCaseValue(page: any, field: any, testCase: any): Promise
       logger.warn(`Unsupported input type: ${field.inputType}`);
       await applyTextValue(page, field, testCase);
   }
+}
+
+async function applyVASValue(page: any, field: any, testCase: any): Promise<void> {
+  // For VAS sliders, find the SliderTrack element and click on it
+  const sliderSelector = `${field.cardBoxSelector} [class*="SliderTrack"]`;
+  
+  // Wait for slider track to be available
+  await page.waitForSelector(sliderSelector, { timeout: 5000 });
+  
+  const sliderTrack = await page.$(sliderSelector);
+  if (!sliderTrack) {
+    throw new Error(`VAS slider track not found for field ${field.questionNumber}`);
+  }
+  
+  // Get the bounding box of the slider track
+  const boundingBox = await sliderTrack.boundingBox();
+  if (!boundingBox) {
+    throw new Error(`Could not get bounding box for VAS slider in field ${field.questionNumber}`);
+  }
+  
+  // Determine click position based on test case value
+  // Value can be 'low', 'middle', 'high' or a number 0-100
+  let clickX: number;
+  let clickY: number;
+  
+  if (typeof testCase.value === 'string') {
+    switch (testCase.value.toLowerCase()) {
+      case 'low':
+      case 'bottom':
+        clickX = boundingBox.x + boundingBox.width * 0.1; // 10% from left
+        clickY = boundingBox.y + boundingBox.height / 2;
+        break;
+      case 'middle':
+      case 'center':
+        clickX = boundingBox.x + boundingBox.width / 2; // Center
+        clickY = boundingBox.y + boundingBox.height / 2;
+        break;
+      case 'high':
+      case 'top':
+        clickX = boundingBox.x + boundingBox.width * 0.9; // 90% from left
+        clickY = boundingBox.y + boundingBox.height / 2;
+        break;
+      default:
+        // Default to middle if unknown string value
+        clickX = boundingBox.x + boundingBox.width / 2;
+        clickY = boundingBox.y + boundingBox.height / 2;
+    }
+  } else if (typeof testCase.value === 'number') {
+    // Treat number as percentage (0-100)
+    const percentage = Math.max(0, Math.min(100, testCase.value)) / 100;
+    clickX = boundingBox.x + boundingBox.width * percentage;
+    clickY = boundingBox.y + boundingBox.height / 2;
+  } else {
+    // Default to middle for any other value type
+    clickX = boundingBox.x + boundingBox.width / 2;
+    clickY = boundingBox.y + boundingBox.height / 2;
+  }
+  
+  // Click on the calculated position
+  await page.mouse.click(clickX, clickY);
+  
+  logger.debug(`Clicked VAS slider at position (${Math.round(clickX)}, ${Math.round(clickY)}) with value "${testCase.value}" for field ${field.questionNumber}`);
 }
 
 async function applyRadioValue(page: any, field: any, testCase: any): Promise<void> {

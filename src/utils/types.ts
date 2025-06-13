@@ -22,7 +22,7 @@ export interface SurveyForm {
 export interface SurveyField {
   questionNumber: string;
   questionText: string;
-  inputType: 'text' | 'radio' | 'dropdown' | 'checkbox' | 'textarea' | 'number' | 'date' | 'email' | 'phone' | 'url';
+  inputType: 'text' | 'radio' | 'dropdown' | 'checkbox' | 'textarea' | 'number' | 'date' | 'email' | 'phone' | 'url' | 'VAS';
   isRequired: boolean;
   choices?: string[];
   screenshotPath: string;
@@ -135,7 +135,7 @@ export interface TestDataTemplate {
 export interface TestCaseTemplate {
   type: 'valid' | 'boundary' | 'edge' | 'invalid';
   valueType: 'static' | 'generated' | 'pattern';
-  value: string | GeneratorFunction;
+  value: string | number | GeneratorFunction;
   description: string;
   weight: number;
   position?: number;

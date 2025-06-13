@@ -417,6 +417,55 @@ export class TestDataGenerator {
           author: 'system',
           tags: ['textarea', 'long_text', 'paragraph']
         }
+      },
+      {
+        id: 'vas_slider_v1',
+        fieldType: 'VAS',
+        version: '1.0.0',
+        description: 'Visual Analog Scale (VAS) slider test cases',
+        testCases: [
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: 'low',
+            description: 'Low end of the VAS scale',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: 'middle',
+            description: 'Middle of the VAS scale',
+            weight: 10
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: 'high',
+            description: 'High end of the VAS scale',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: 25,
+            description: '25% position on VAS scale',
+            weight: 8
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: 75,
+            description: '75% position on VAS scale',
+            weight: 8
+          }
+        ],
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          author: 'system',
+          tags: ['VAS', 'slider', 'visual_analog', 'scale']
+        }
       }
     ];
 
@@ -462,6 +511,11 @@ export class TestDataGenerator {
       return this.generateChoiceBasedTestCases(field, detection);
     }
 
+    // Handle VAS sliders specifically
+    if (field.inputType === 'VAS') {
+      return this.generateVASTestCases(field, detection);
+    }
+
     // Use template-based generation for other field types
     const templateId = detection.template || `${detection.fieldType}_validation_v1`;
     const template = this.templates.get(templateId) || this.templates.get('general_text_v1')!;
@@ -471,6 +525,20 @@ export class TestDataGenerator {
         const testCase = this.createTestCaseFromTemplate(templateCase, field, index);
         testCases.push(testCase);
       }
+    });
+
+    return testCases;
+  }
+
+  private generateVASTestCases(field: SurveyField, detection: DetectionResult): TestCase[] {
+    const testCases: TestCase[] = [];
+    
+    // Use VAS-specific template
+    const template = this.templates.get('vas_slider_v1')!;
+    
+    template.testCases.forEach((templateCase, index) => {
+      const testCase = this.createTestCaseFromTemplate(templateCase, field, index);
+      testCases.push(testCase);
     });
 
     return testCases;

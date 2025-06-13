@@ -227,6 +227,12 @@ export class SurveyFormDetector {
         return type || 'text';
       }
 
+      function detectVASSlider(container: Element): boolean {
+        // Check if this question contains a VAS slider (SliderTrack class)
+        const sliderTrack = container.querySelector('[class*="SliderTrack"]');
+        return !!sliderTrack;
+      }
+
       function getChoices(input: Element, container: Element): string[] {
         if (input.tagName === 'SELECT') {
           const options = Array.from(input.querySelectorAll('option'));
@@ -275,6 +281,24 @@ export class SurveyFormDetector {
         return `${tagName}:nth-of-type(${index + 1})`;
       }
 
+      function generateSliderSelector(sliderTrack: Element, index: number): string {
+        if (sliderTrack.id) {
+          try {
+            return `#${CSS.escape(sliderTrack.id)}`;
+          } catch (e) {
+            return `[id="${sliderTrack.id}"]`;
+          }
+        }
+        
+        // Use class-based selector for SliderTrack
+        const className = Array.from(sliderTrack.classList).find(cls => cls.includes('SliderTrack'));
+        if (className) {
+          return `[class*="${className}"]`;
+        }
+        
+        return `[class*="SliderTrack"]:nth-of-type(${index + 1})`;
+      }
+
       const rightPanel = document.querySelector(selector);
       if (!rightPanel) {
         return [];
@@ -289,17 +313,28 @@ export class SurveyFormDetector {
         const rawQuestionText = extractQuestionText(cardBox);
         const questionNumber = extractQuestionNumber(rawQuestionText);
         
+        // Check if this is a VAS slider first
+        const isVASSlider = detectVASSlider(cardBox);
+        
         // Find all inputs within this CardBox
         const questionInputs = cardBox.querySelectorAll('input, select, textarea');
         const nonHiddenInputs = Array.from(questionInputs).filter(inp => (inp as HTMLInputElement).type !== 'hidden');
         
-        if (nonHiddenInputs.length === 0) return; // Skip if no visible inputs
+        // For VAS sliders, we might not have traditional inputs, so don't skip if it's a VAS slider
+        if (nonHiddenInputs.length === 0 && !isVASSlider) return; // Skip if no visible inputs and not a VAS slider
         
         let inputType = 'text';
         let choices: string[] = [];
         let elementSelector = '';
 
-        if (nonHiddenInputs.length === 1) {
+        // Handle VAS slider
+        if (isVASSlider) {
+          inputType = 'VAS';
+          const sliderTrack = cardBox.querySelector('[class*="SliderTrack"]');
+          if (sliderTrack) {
+            elementSelector = generateSliderSelector(sliderTrack, index);
+          }
+        } else if (nonHiddenInputs.length === 1) {
           // Single input - use its type and selector
           const singleInput = nonHiddenInputs[0];
           inputType = getInputType(singleInput);
