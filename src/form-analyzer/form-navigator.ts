@@ -72,7 +72,7 @@ export class FormNavigator {
       try {
         await this.fillField(page, field);
         // Small delay between fields to simulate user interaction
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
         logger.error(`Failed to fill field ${field.questionNumber}:`, error);
         throw error;
@@ -87,7 +87,7 @@ export class FormNavigator {
         try {
           await this.fillField(page, field);
           // Small delay between fields to simulate user interaction
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
           logger.error(`Failed to fill VAS field ${field.questionNumber}:`, error);
           // Don't throw for VAS fields, just log the error
@@ -409,6 +409,331 @@ export class FormNavigator {
     }
   }
   
+  async fillMissingRequiredFields(page: Page): Promise<void> {
+    try {
+      logger.info('Scanning for missing required fields (likely conditional fields)...');
+      
+      // Find all visible required fields that aren't filled
+      const missingFields = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return [];
+        
+        const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+        const missingRequired: Array<{questionNumber: string, selector: string, inputType: string}> = [];
+        
+        cardBoxes.forEach((cardBox) => {
+          // Skip if hidden
+          const style = window.getComputedStyle(cardBox);
+          if (style.display === 'none' || style.visibility === 'hidden') {
+            return;
+          }
+          
+          // Look for question number and check if required
+          let questionNumber = '';
+          let isRequired = false;
+          let questionText = '';
+          
+          const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+          for (const elem of textElements) {
+            const text = elem.textContent?.trim() || '';
+            const match = text.match(/^(\d+\.?\d*\.?)\s*(.*)/);
+            if (match) {
+              questionNumber = match[1];
+              questionText = match[2];
+              // Check if the question text ends with *
+              isRequired = text.endsWith('*');
+              break;
+            }
+          }
+          
+          if (questionNumber && isRequired) {
+            // Check if this field has a value
+            const inputs = cardBox.querySelectorAll('input, select, textarea');
+            let hasValue = false;
+            let inputType = 'unknown';
+            let selector = '';
+            
+            for (const input of inputs) {
+              if (input.tagName === 'SELECT') {
+                const selectEl = input as HTMLSelectElement;
+                hasValue = selectEl.selectedIndex > 0;
+                inputType = 'dropdown';
+                selector = `#${input.id || ''}`;
+              } else if (input.tagName === 'TEXTAREA') {
+                hasValue = (input as HTMLTextAreaElement).value.trim().length > 0;
+                inputType = 'textarea';
+                selector = `#${input.id || ''}`;
+              } else if ((input as HTMLInputElement).type === 'radio') {
+                const radioGroup = cardBox.querySelectorAll(`input[type="radio"][name="${(input as HTMLInputElement).name}"]`);
+                hasValue = Array.from(radioGroup).some(r => (r as HTMLInputElement).checked);
+                inputType = 'radio';
+                if (!hasValue && input.id) {
+                  selector = `#${input.id}`;
+                }
+              } else if ((input as HTMLInputElement).type === 'text' || (input as HTMLInputElement).type === 'email' || (input as HTMLInputElement).type === 'number') {
+                hasValue = (input as HTMLInputElement).value.trim().length > 0;
+                inputType = (input as HTMLInputElement).type;
+                selector = `#${input.id || ''}`;
+              }
+              
+              if (!hasValue && selector) {
+                break; // Found an unfilled input
+              }
+            }
+            
+            if (!hasValue && selector) {
+              missingRequired.push({
+                questionNumber,
+                selector,
+                inputType
+              });
+            }
+          }
+        });
+        
+        return missingRequired;
+      });
+      
+      if (missingFields.length > 0) {
+        logger.info(`Found ${missingFields.length} missing required fields: ${missingFields.map(f => f.questionNumber).join(', ')}`);
+        
+        // Fill each missing field
+        for (const missingField of missingFields) {
+          try {
+            logger.info(`Filling missing field ${missingField.questionNumber} (${missingField.inputType})`);
+            
+            // Create a minimal SurveyField object for filling
+            const field: Partial<SurveyField> = {
+              questionNumber: missingField.questionNumber,
+              selector: missingField.selector,
+              inputType: missingField.inputType as any,
+              testData: {
+                detectedType: 'unknown',
+                confidence: 0.5,
+                detectionMethod: 'fallback',
+                generatedAt: new Date().toISOString(),
+                testCases: [{
+                  id: 'emergency_fill',
+                  type: 'valid',
+                  value: missingField.inputType === 'radio' ? 0 : 'Test response',
+                  description: 'Emergency fill for conditional field',
+                  source: 'generated',
+                  status: 'draft',
+                  provenance: {
+                    createdBy: 'system',
+                    createdAt: new Date().toISOString(),
+                    generator: {
+                      algorithm: 'conditional_field_filler',
+                      version: '1.0.0',
+                      template: 'emergency_fill',
+                      confidence: 0.5
+                    },
+                    modifications: []
+                  },
+                  quality: {
+                    confidence: 0.5,
+                    reviewCount: 0
+                  }
+                }],
+                summary: {
+                  totalTestCases: 1,
+                  generatedCount: 1,
+                  humanCount: 0,
+                  hybridCount: 0,
+                  approvedCount: 0,
+                  pendingReviewCount: 1
+                }
+              }
+            };
+            
+            await this.fillField(page, field as SurveyField);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (error) {
+            logger.error(`Failed to fill missing field ${missingField.questionNumber}:`, error);
+          }
+        }
+      } else {
+        logger.info('No missing required fields found');
+      }
+    } catch (error) {
+      logger.error('Error filling missing required fields:', error);
+    }
+  }
+
+  private async checkForNewFields(page: Page, knownQuestionNumbers: Set<string>): Promise<string[]> {
+    try {
+      const newQuestionNumbers = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return [];
+        
+        const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+        const questionNumbers: string[] = [];
+        
+        cardBoxes.forEach((cardBox) => {
+          // Skip if hidden
+          const style = window.getComputedStyle(cardBox);
+          if (style.display === 'none' || style.visibility === 'hidden') {
+            return;
+          }
+          
+          // Look for question number
+          const questionElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+          for (const elem of questionElements) {
+            const text = elem.textContent?.trim() || '';
+            const match = text.match(/^(\d+\.?\d*\.?)/);
+            if (match) {
+              questionNumbers.push(match[1]);
+              break;
+            }
+          }
+        });
+        
+        return questionNumbers;
+      });
+      
+      // Filter out known question numbers
+      const newFields = newQuestionNumbers.filter(qNum => !knownQuestionNumbers.has(qNum));
+      return newFields;
+    } catch (error) {
+      logger.error('Error checking for new fields:', error);
+      return [];
+    }
+  }
+
+  private async scanForNewRequiredFields(page: Page, filledQuestions: Set<string>, knownQuestionNumbers: Set<string>): Promise<string[]> {
+    try {
+      const requiredFields = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return [];
+        
+        const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+        const requiredQuestions: string[] = [];
+        
+        cardBoxes.forEach((cardBox) => {
+          // Skip if hidden
+          const style = window.getComputedStyle(cardBox);
+          if (style.display === 'none' || style.visibility === 'hidden') {
+            return;
+          }
+          
+          // Look for question number and check if required
+          let questionNumber = '';
+          let isRequired = false;
+          
+          const questionElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+          for (const elem of questionElements) {
+            const text = elem.textContent?.trim() || '';
+            const match = text.match(/^(\d+\.?\d*\.?)/);
+            if (match) {
+              questionNumber = match[1];
+              // Check if the question text ends with *
+              const fullText = elem.textContent?.trim() || '';
+              isRequired = fullText.endsWith('*');
+              break;
+            }
+          }
+          
+          if (questionNumber && isRequired) {
+            requiredQuestions.push(questionNumber);
+          }
+        });
+        
+        return requiredQuestions;
+      });
+      
+      // Filter out already filled questions
+      return requiredFields.filter(qNum => !filledQuestions.has(qNum));
+    } catch (error) {
+      logger.error('Error scanning for new required fields:', error);
+      return [];
+    }
+  }
+
+  private async detectNewlyVisibleRequiredFields(page: Page, allFields: SurveyField[], filledQuestions: Set<string>): Promise<SurveyField[]> {
+    try {
+      // Look for visible required fields that haven't been filled yet
+      const newFields: SurveyField[] = [];
+      
+      // Check each field in the original list to see if it's now visible
+      for (const field of allFields) {
+        // Skip if already filled or already marked as required
+        if (filledQuestions.has(field.questionNumber) || field.isRequired) {
+          continue;
+        }
+        
+        // Check if the field is now visible and required
+        const isNowVisible = await page.evaluate((selector) => {
+          try {
+            const element = document.querySelector(selector);
+            if (!element) return false;
+            
+            // Check if element is visible
+            const style = window.getComputedStyle(element);
+            const isVisible = style.display !== 'none' && 
+                            style.visibility !== 'hidden' && 
+                            style.opacity !== '0';
+            
+            if (!isVisible) return false;
+            
+            // Check if the containing CardBox is visible
+            const cardBox = element.closest('[class*="CardBox"]');
+            if (cardBox) {
+              const cardBoxStyle = window.getComputedStyle(cardBox);
+              return cardBoxStyle.display !== 'none' && 
+                     cardBoxStyle.visibility !== 'hidden';
+            }
+            
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }, field.selector);
+        
+        if (isNowVisible) {
+          // Mark as required since it's now visible and needs to be filled
+          field.isRequired = true;
+          newFields.push(field);
+        }
+      }
+      
+      // Also check for completely new fields that weren't in the original scan
+      const newQuestionNumbers = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return [];
+        
+        const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+        const questionNumbers: string[] = [];
+        
+        cardBoxes.forEach((cardBox) => {
+          // Look for question number
+          const questionElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+          for (const elem of questionElements) {
+            const text = elem.textContent?.trim() || '';
+            const match = text.match(/^(\d+\.?\d*\.?)/);
+            if (match) {
+              questionNumbers.push(match[1]);
+              break;
+            }
+          }
+        });
+        
+        return questionNumbers;
+      });
+      
+      // Log any question numbers that we haven't seen before
+      for (const qNum of newQuestionNumbers) {
+        if (!allFields.some(f => f.questionNumber === qNum) && !filledQuestions.has(qNum)) {
+          logger.info(`Detected new question number ${qNum} that wasn't in original scan`);
+        }
+      }
+      
+      return newFields;
+    } catch (error) {
+      logger.error('Error detecting newly visible fields:', error);
+      return [];
+    }
+  }
+
   async waitForFormTransition(page: Page, previousTitle: string): Promise<boolean> {
     try {
       logger.info(`Waiting for form transition from: "${previousTitle}"`);

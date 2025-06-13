@@ -91,8 +91,8 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
           if (hasModal) {
             logger.warn('Validation modal detected, closing and retrying...');
             await formNavigator.closeValidationModal(puppeteerManager.getPage());
-            // Try to fill any missing fields and click next again
-            await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
+            // Try to fill any missing fields (including conditional fields) and click next again
+            await formNavigator.fillMissingRequiredFields(puppeteerManager.getPage());
             await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
           }
           
