@@ -48,6 +48,7 @@
    <div>
  </div>`
 - A form contains fields, a from can navigate to the next form, which can have the same question numbers as the previous form. You can only navigate to the next form if there are valid values in each required field. Some forms contain no fields. Each form contains a <p>long title</p> and an <h3>short name</h3> before the first question. A survey is the collection of all forms. A survey should contain the analysis of all forms. The final form is identified by the presence of the "Finish Survey" navigation button. For each form, record which of the next, previous, finish survey buttons were displayed as an ordered array.
+- if a question contains a div with class starting with SliderTrack - this is a VAS slider. To complete a value and move forward, click on the slider track in the middle, top or bottom to record a value
 
 
 *** Firestore ***

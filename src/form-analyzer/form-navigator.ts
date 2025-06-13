@@ -64,6 +64,7 @@ export class FormNavigator {
   }
   
   async fillRequiredFields(page: Page, fields: SurveyField[]): Promise<void> {
+    // Fill required fields first
     const requiredFields = fields.filter(f => f.isRequired);
     logger.info(`Filling ${requiredFields.length} required fields`);
     
@@ -77,10 +78,26 @@ export class FormNavigator {
         throw error;
       }
     }
+    
+    // Also fill VAS sliders even if not marked as required (they need interaction to set values)
+    const vasFields = fields.filter(f => f.inputType === 'VAS' && !f.isRequired);
+    if (vasFields.length > 0) {
+      logger.info(`Filling ${vasFields.length} VAS slider fields (even if not required)`);
+      for (const field of vasFields) {
+        try {
+          await this.fillField(page, field);
+          // Small delay between fields to simulate user interaction
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error) {
+          logger.error(`Failed to fill VAS field ${field.questionNumber}:`, error);
+          // Don't throw for VAS fields, just log the error
+        }
+      }
+    }
   }
   
   private async fillField(page: Page, field: SurveyField): Promise<void> {
-    logger.debug(`Filling field ${field.questionNumber} (${field.inputType})`);
+    logger.info(`Filling field ${field.questionNumber} (${field.inputType}) with selector: ${field.selector}`);
     
     // Get the first test case value
     const testValue = field.testData?.testCases[0]?.value;
@@ -88,6 +105,8 @@ export class FormNavigator {
       logger.warn(`No test data available for field ${field.questionNumber}`);
       return;
     }
+    
+    logger.info(`Using test value: ${testValue}`);
     
     switch (field.inputType) {
       case 'text':
@@ -102,10 +121,133 @@ export class FormNavigator {
         break;
         
       case 'radio':
-        // For radio buttons, select by index
+        // For radio buttons, we need to find the radio group and select by index
         const radioIndex = typeof testValue === 'number' ? testValue : 0;
-        const radioSelector = `${field.selector}:nth-of-type(${radioIndex + 1})`;
-        await page.click(radioSelector);
+        
+        // Try multiple approaches to select radio buttons
+        let radioSelected = false;
+        
+        // Approach 1: Try to use the cardBoxSelector to find all radios in the question
+        if (field.cardBoxSelector && !radioSelected) {
+          try {
+            const radioButtons = await page.$$(`${field.cardBoxSelector} input[type="radio"]`);
+            if (radioButtons.length > radioIndex) {
+              await radioButtons[radioIndex].click();
+              radioSelected = true;
+              logger.info(`Selected radio button ${radioIndex} using cardBox selector`);
+            }
+          } catch (error) {
+            logger.debug(`CardBox radio selection failed: ${error}`);
+          }
+        }
+        
+        // Approach 2: Try to find radio by name attribute from the main selector
+        if (!radioSelected) {
+          try {
+            // Extract name from the selector or try to find the input element first
+            const firstRadio = await page.$(field.selector);
+            if (firstRadio) {
+              const radioName = await firstRadio.evaluate(el => (el as HTMLInputElement).name);
+              if (radioName) {
+                const radioButtons = await page.$$(`input[type="radio"][name="${radioName}"]`);
+                if (radioButtons.length > radioIndex) {
+                  await radioButtons[radioIndex].click();
+                  radioSelected = true;
+                  logger.info(`Selected radio button ${radioIndex} using name attribute: ${radioName}`);
+                }
+              }
+            }
+          } catch (error) {
+            logger.debug(`Name-based radio selection failed: ${error}`);
+          }
+        }
+        
+        // Approach 3: Fallback - try to click the specific selector directly
+        if (!radioSelected) {
+          try {
+            await page.click(field.selector);
+            radioSelected = true;
+            logger.info(`Selected radio button using direct selector`);
+          } catch (error) {
+            logger.debug(`Direct radio selection failed: ${error}`);
+          }
+        }
+        
+        if (!radioSelected) {
+          throw new Error(`Failed to select radio button for field ${field.questionNumber}`);
+        }
+        break;
+        
+      case 'VAS':
+        // For VAS sliders, click at the middle position
+        try {
+          // Try multiple selector strategies for VAS sliders
+          let sliderTrack = null;
+          let usedSelector = '';
+          
+          // Strategy 1: Use the field's direct selector
+          if (field.selector) {
+            try {
+              sliderTrack = await page.$(field.selector);
+              if (sliderTrack) {
+                usedSelector = field.selector;
+                logger.info(`Found VAS slider using direct selector: ${field.selector}`);
+              }
+            } catch (error) {
+              logger.debug(`Direct selector failed: ${error}`);
+            }
+          }
+          
+          // Strategy 2: Use cardBox + SliderTrack
+          if (!sliderTrack && field.cardBoxSelector) {
+            try {
+              const cardBoxSelector = `${field.cardBoxSelector} [class*="SliderTrack"]`;
+              sliderTrack = await page.$(cardBoxSelector);
+              if (sliderTrack) {
+                usedSelector = cardBoxSelector;
+                logger.info(`Found VAS slider using cardBox selector: ${cardBoxSelector}`);
+              }
+            } catch (error) {
+              logger.debug(`CardBox selector failed: ${error}`);
+            }
+          }
+          
+          // Strategy 3: General SliderTrack search
+          if (!sliderTrack) {
+            try {
+              sliderTrack = await page.$('[class*="SliderTrack"]');
+              if (sliderTrack) {
+                usedSelector = '[class*="SliderTrack"]';
+                logger.info(`Found VAS slider using general SliderTrack selector`);
+              }
+            } catch (error) {
+              logger.debug(`General SliderTrack selector failed: ${error}`);
+            }
+          }
+          
+          if (sliderTrack) {
+            const boundingBox = await sliderTrack.boundingBox();
+            if (boundingBox) {
+              // Click at the middle of the slider  
+              const clickX = boundingBox.x + boundingBox.width / 2;
+              const clickY = boundingBox.y + boundingBox.height / 2;
+              
+              logger.info(`Clicking VAS slider at (${Math.round(clickX)}, ${Math.round(clickY)}) using selector: ${usedSelector}`);
+              await page.mouse.click(clickX, clickY);
+              
+              // Wait a bit for the slider to respond
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              logger.info(`Successfully clicked VAS slider for field ${field.questionNumber}`);
+            } else {
+              logger.error(`Could not get bounding box for VAS slider`);
+            }
+          } else {
+            logger.error(`Could not find VAS slider element for field ${field.questionNumber}`);
+          }
+        } catch (error) {
+          logger.error(`Failed to click VAS slider for field ${field.questionNumber}:`, error);
+        }
         break;
         
       case 'dropdown':
@@ -265,49 +407,71 @@ export class FormNavigator {
   
   async waitForFormTransition(page: Page, previousTitle: string): Promise<boolean> {
     try {
-      // Wait for navigation to complete (URL change or DOM update)
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {
-        // If no navigation, wait for DOM changes
-        return new Promise(resolve => setTimeout(resolve, 2000));
-      });
+      logger.info(`Waiting for form transition from: "${previousTitle}"`);
       
-      // Check if we're on a new form by looking for title changes
-      const hasNewForm = await page.evaluate((prevTitle) => {
-        // Look for title elements within survey-body-container
-        const surveyBody = document.querySelector('#survey-body-container');
-        if (!surveyBody) return false;
+      // Give more time for the form to load and check multiple times
+      let attempts = 0;
+      const maxAttempts = 10;
+      const waitBetweenAttempts = 1000; // 1 second
+      
+      while (attempts < maxAttempts) {
+        // Wait a bit for DOM changes
+        await new Promise(resolve => setTimeout(resolve, waitBetweenAttempts));
         
-        // Check for form titles
-        const titleSelectors = ['h1', 'h2', 'h3', 'p', '[class*="title"]'];
-        for (const selector of titleSelectors) {
-          const elements = surveyBody.querySelectorAll(selector);
-          for (const element of elements) {
-            const text = element.textContent?.trim() || '';
-            // Look for a different title that's not empty and not the previous one
-            if (text && text.length > 3 && text !== prevTitle) {
-              // Also check if there are new question fields
-              const newQuestions = surveyBody.querySelectorAll('[class*="CardBox"]');
-              if (newQuestions.length > 0) {
-                return true;
-              }
+        // Check if we're on a new form using multiple strategies
+        const transitionResult = await page.evaluate((prevTitle) => {
+          const surveyBody = document.querySelector('#survey-body-container');
+          if (!surveyBody) return { hasNewForm: false, reason: 'No survey body container' };
+          
+          // Strategy 1: Check for different content in form titles
+          const allPs = surveyBody.querySelectorAll('p');
+          let currentFormTitle = null;
+          
+          for (const p of allPs) {
+            const parent = p.parentElement;
+            if (parent && parent.querySelector('h3')) {
+              currentFormTitle = p.textContent?.trim();
+              break;
             }
           }
+          
+          // Strategy 2: Check short name (h3) changes
+          const h3Elements = surveyBody.querySelectorAll('h3');
+          const currentShortName = h3Elements.length > 0 ? h3Elements[0].textContent?.trim() : '';
+          
+          // Strategy 3: Check for different question content
+          const questions = surveyBody.querySelectorAll('[class*="CardBox"]');
+          const questionTexts = Array.from(questions).map(q => q.textContent?.trim().substring(0, 50));
+          
+          // Strategy 4: Check if any questions contain different selectors or types
+          const hasSliderTrack = surveyBody.querySelector('[class*="SliderTrack"]') !== null;
+          
+          return {
+            hasNewForm: true, // For now, assume we can transition
+            currentFormTitle: currentFormTitle || 'Unknown',
+            currentShortName: currentShortName || 'Unknown',
+            questionCount: questions.length,
+            questionTexts: questionTexts,
+            hasSliderTrack: hasSliderTrack,
+            reason: 'Form content available'
+          };
+        }, previousTitle);
+        
+        logger.info(`Form transition check ${attempts + 1}/${maxAttempts}: ${transitionResult.reason}`);
+        logger.info(`Current form: "${transitionResult.currentFormTitle}", Short name: "${transitionResult.currentShortName}"`);
+        logger.info(`Questions: ${transitionResult.questionCount}, Has VAS slider: ${transitionResult.hasSliderTrack}`);
+        
+        // If we have questions, consider it a valid form
+        if (transitionResult.questionCount && transitionResult.questionCount > 0) {
+          logger.info('Form transition successful - found questions');
+          return true;
         }
         
-        // Alternative: check if question numbers have reset (indicating new form)
-        const firstQuestion = surveyBody.querySelector('[class*="CardBox"]');
-        if (firstQuestion) {
-          const questionText = firstQuestion.textContent || '';
-          if (questionText.match(/^1\.\s/)) {
-            // First question starts with "1." - likely a new form
-            return true;
-          }
-        }
-        
-        return false;
-      }, previousTitle);
+        attempts++;
+      }
       
-      return hasNewForm;
+      logger.warn(`Form transition failed after ${maxAttempts} attempts`);
+      return false;
     } catch (error) {
       logger.error('Error waiting for form transition:', error);
       return false;

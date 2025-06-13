@@ -90,7 +90,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
           // Additional check: verify we're actually on a different form
           const newFormPreview = await puppeteerManager.getPage().evaluate(() => {
             const container = document.querySelector('#survey-body-container');
-            if (!container) return { title: '', questionCount: 0 };
+            if (!container) return { title: '', shortName: '', questionCount: 0, hasVASSlider: false };
             
             // Use same title detection logic as extractFormTitles()
             const allPs = container.querySelectorAll('p');
@@ -110,17 +110,26 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
             
             const title = formTitleP?.textContent?.trim() || 'Title not found';
             
+            // Get short name (h3)
+            const h3Elements = container.querySelectorAll('h3');
+            const shortName = h3Elements.length > 0 ? h3Elements[0].textContent?.trim() || 'Short name not found' : 'Short name not found';
+            
             // Count questions
             const questions = container.querySelectorAll('[class*="CardBox"]');
             
-            return { title, questionCount: questions.length };
+            // Check for VAS slider
+            const hasVASSlider = container.querySelector('[class*="SliderTrack"]') !== null;
+            
+            return { title, shortName, questionCount: questions.length, hasVASSlider };
           });
           
-          logger.info(`New form preview: "${newFormPreview.title}" with ${newFormPreview.questionCount} questions`);
+          logger.info(`New form preview: "${newFormPreview.title}" (${newFormPreview.shortName}) with ${newFormPreview.questionCount} questions, VAS: ${newFormPreview.hasVASSlider}`);
           
-          // If we have the same title and same number of questions, we might be stuck
-          if (newFormPreview.title === form.longTitle && newFormPreview.questionCount === form.fields.length) {
-            logger.warn('Detected same form after navigation, might be stuck. Stopping analysis.');
+          // Check if we're stuck by comparing both title AND short name
+          if (newFormPreview.title === form.longTitle && 
+              newFormPreview.shortName === form.shortName && 
+              newFormPreview.questionCount === form.fields.length) {
+            logger.warn('Detected same form after navigation (same title, short name, and question count). Stopping analysis.');
             break;
           }
           
