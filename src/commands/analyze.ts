@@ -42,7 +42,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
     while (!isLastForm) {
       logger.info(`Analyzing form ${formIndex + 1}...`);
       
-      // Clear any existing values from the form before analysis
+      // Clear any existing values from the form before analysis (skip for cover/intro forms)
       logger.info('Clearing any existing field values...');
       await formResetService.clearFormValues(puppeteerManager.getPage());
       

@@ -31,30 +31,48 @@ export class FormResetService {
     logger.info('Navigating to first form...');
     
     let attempts = 0;
-    const maxAttempts = 10; // Prevent infinite loops
+    const maxAttempts = 15; // Increase attempts for EQ-5D which has many forms
     
     while (attempts < maxAttempts) {
+      // Get detailed form info for logging
+      const currentFormInfo = await this.getCurrentFormInfo(page);
+      logger.info(`Current form: "${currentFormInfo.title}" (${currentFormInfo.shortName}), buttons: ${currentFormInfo.buttons.join(', ')}`);
+      
       const isFirst = await this.isFirstForm(page);
       if (isFirst) {
         logger.info('Reached first form');
         return;
       }
       
-      // Click previous button
+      // Click previous button using a more robust approach
       try {
-        await this.clickPreviousButton(page);
+        const clicked = await this.clickPreviousButtonRobust(page);
+        if (!clicked) {
+          logger.info('No previous button available, assuming we reached first form');
+          break;
+        }
+        
         await this.waitForFormTransition(page);
         attempts++;
-        logger.info(`Clicked previous button, attempt ${attempts}`);
+        logger.info(`Successfully navigated backwards, attempt ${attempts}`);
       } catch (error) {
         logger.warn(`Failed to click previous button on attempt ${attempts}:`, error);
-        break;
+        // Try to continue anyway - maybe we can still detect the first form
+        attempts++;
+        if (attempts >= 3) {
+          logger.warn('Multiple navigation failures, stopping attempts');
+          break;
+        }
       }
     }
     
     if (attempts >= maxAttempts) {
       logger.warn(`Reached maximum attempts (${maxAttempts}) trying to navigate to first form`);
     }
+    
+    // Final check of where we ended up
+    const finalFormInfo = await this.getCurrentFormInfo(page);
+    logger.info(`Final form: "${finalFormInfo.title}" (${finalFormInfo.shortName}), buttons: ${finalFormInfo.buttons.join(', ')}`);
   }
 
   /**
@@ -116,6 +134,111 @@ export class FormResetService {
       await new Promise(resolve => setTimeout(resolve, 200));
     } else {
       logger.debug(`No BaseButton found in popup for field ${fieldIndex + 1}`);
+    }
+  }
+
+  /**
+   * Get current form information for debugging
+   */
+  private async getCurrentFormInfo(page: Page): Promise<{title: string, shortName: string, buttons: string[]}> {
+    try {
+      return await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return { title: 'No container', shortName: 'No container', buttons: [] };
+        
+        // Get title and short name using same logic as analysis
+        const allPs = container.querySelectorAll('p');
+        let formTitleP = null;
+        
+        for (const p of allPs) {
+          const parent = p.parentElement;
+          if (parent && parent.querySelector('h3')) {
+            formTitleP = p;
+            break;
+          }
+        }
+        
+        const title = formTitleP?.textContent?.trim() || 'Title not found';
+        const h3Elements = container.querySelectorAll('h3');
+        const shortName = h3Elements.length > 0 ? h3Elements[0].textContent?.trim() || 'Short name not found' : 'Short name not found';
+        
+        // Get navigation buttons
+        const navigationArea = container.nextElementSibling;
+        const buttons: string[] = [];
+        if (navigationArea) {
+          const buttonElements = navigationArea.querySelectorAll('button');
+          buttonElements.forEach(btn => {
+            const text = btn.textContent?.trim() || '';
+            const disabled = btn.disabled ? ' (disabled)' : '';
+            buttons.push(text + disabled);
+          });
+        }
+        
+        return { title, shortName, buttons };
+      });
+    } catch (error) {
+      return { title: 'Error', shortName: 'Error', buttons: [] };
+    }
+  }
+
+  /**
+   * More robust previous button clicking with fallback strategies
+   */
+  private async clickPreviousButtonRobust(page: Page): Promise<boolean> {
+    try {
+      // Strategy 1: Use the previous button detection
+      const navButtons = await this.detectNavigationButtons(page);
+      const previousButton = navButtons.find(b => b.type === 'previous' && b.isEnabled);
+      
+      if (!previousButton) {
+        logger.debug('No previous button found');
+        return false;
+      }
+      
+      logger.debug(`Attempting to click previous button: "${previousButton.text}"`);
+      
+      // Try direct click first (no navigation wait)
+      try {
+        await page.click(previousButton.selector);
+        logger.debug('Direct click succeeded');
+        return true;
+      } catch (error) {
+        logger.debug(`Direct click failed: ${error}`);
+      }
+      
+      // Strategy 2: Use evaluate to click
+      try {
+        const clicked = await page.evaluate((buttonText) => {
+          const surveyBody = document.querySelector('#survey-body-container');
+          const navigationArea = surveyBody?.nextElementSibling;
+          
+          if (!navigationArea) return false;
+          
+          const buttons = Array.from(navigationArea.querySelectorAll('button'));
+          const button = buttons.find(b => {
+            const btnText = b.textContent?.trim().toLowerCase() || '';
+            return btnText.includes('prev') || btnText.includes('back') || btnText.includes('←');
+          });
+          
+          if (button && !button.disabled) {
+            button.click();
+            return true;
+          }
+          return false;
+        }, previousButton.text);
+        
+        if (clicked) {
+          logger.debug('Evaluate click succeeded');
+          return true;
+        }
+      } catch (error) {
+        logger.debug(`Evaluate click failed: ${error}`);
+      }
+      
+      return false;
+    } catch (error) {
+      logger.error('Error in clickPreviousButtonRobust:', error);
+      return false;
     }
   }
 

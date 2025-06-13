@@ -35,12 +35,48 @@ export class ScreenshotService {
       const surveyBody = document.querySelector('#survey-body-container');
       if (!surveyBody) return 0;
       
-      // Get the full scrollable height
-      return Math.max(
-        surveyBody.scrollHeight,
-        surveyBody.clientHeight,
-        (surveyBody as HTMLElement).offsetHeight
+      // Get the full scrollable height of the container
+      const scrollHeight = surveyBody.scrollHeight;
+      const clientHeight = surveyBody.clientHeight;
+      const offsetHeight = (surveyBody as HTMLElement).offsetHeight;
+      
+      // Also check the height needed to show all questions
+      const questions = surveyBody.querySelectorAll('[class*="CardBox"]');
+      let totalQuestionHeight = 0;
+      
+      questions.forEach(question => {
+        const rect = question.getBoundingClientRect();
+        totalQuestionHeight = Math.max(totalQuestionHeight, rect.bottom);
+      });
+      
+      // Get the navigation area height as well
+      const navigationArea = surveyBody.nextElementSibling;
+      let navHeight = 0;
+      if (navigationArea) {
+        const navRect = navigationArea.getBoundingClientRect();
+        navHeight = navRect.height;
+      }
+      
+      // Calculate required height including scroll position
+      const bodyRect = surveyBody.getBoundingClientRect();
+      const requiredHeight = Math.max(
+        scrollHeight,
+        clientHeight, 
+        offsetHeight,
+        totalQuestionHeight - bodyRect.top + navHeight + 100 // Add padding
       );
+      
+      console.log('Height calculation:', {
+        scrollHeight,
+        clientHeight,
+        offsetHeight,
+        totalQuestionHeight,
+        navHeight,
+        requiredHeight,
+        questionCount: questions.length
+      });
+      
+      return requiredHeight;
     });
   }
 
@@ -62,10 +98,13 @@ export class ScreenshotService {
         return;
       }
 
+      const extendedHeight = Math.max(formHeight + 200, currentViewport.height);
+      logger.info(`Form height: ${formHeight}, extending viewport to: ${currentViewport.width}x${extendedHeight}`);
+
       // Extend viewport to include full form
       await page.setViewport({
         width: currentViewport.width,
-        height: Math.max(formHeight + 200, currentViewport.height),
+        height: extendedHeight,
         deviceScaleFactor: currentViewport.deviceScaleFactor || 1
       });
 
