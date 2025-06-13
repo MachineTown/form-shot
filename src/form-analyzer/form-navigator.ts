@@ -63,39 +63,253 @@ export class FormNavigator {
     });
   }
   
-  async fillRequiredFields(page: Page, fields: SurveyField[]): Promise<void> {
-    // Fill required fields first
-    const requiredFields = fields.filter(f => f.isRequired);
-    logger.info(`Filling ${requiredFields.length} required fields`);
+  async fillRequiredFields(page: Page, fields: SurveyField[]): Promise<SurveyField[]> {
+    // This will return all fields including newly discovered conditional ones
+    const allFields: SurveyField[] = [...fields];
+    const filledQuestions = new Set<string>();
     
-    for (const field of requiredFields) {
+    // Get initial state of visible questions
+    const initialQuestions = await this.getVisibleQuestions(page);
+    logger.info(`Initial visible questions: ${initialQuestions.join(', ')}`);
+    
+    // Process fields in order, checking for new conditional fields after each one
+    let fieldIndex = 0;
+    while (fieldIndex < allFields.length) {
+      const field = allFields[fieldIndex];
+      
+      // Skip if already filled
+      if (filledQuestions.has(field.questionNumber)) {
+        fieldIndex++;
+        continue;
+      }
+      
+      // Check if field is required or VAS (VAS needs interaction even if not required)
+      if (!field.isRequired && field.inputType !== 'VAS') {
+        fieldIndex++;
+        continue;
+      }
+      
       try {
-        await this.fillField(page, field);
-        // Small delay between fields to simulate user interaction
+        // Record state before filling
+        const questionsBefore = await this.getVisibleQuestions(page);
+        
+        // Fill the field
+        logger.info(`Filling field ${field.questionNumber} (${field.inputType})`);
+        const filledValue = await this.fillFieldAndGetValue(page, field);
+        filledQuestions.add(field.questionNumber);
+        
+        // Wait for any conditional fields to appear
         await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Check for new questions that appeared
+        const questionsAfter = await this.getVisibleQuestions(page);
+        const newQuestions = questionsAfter.filter(q => !questionsBefore.includes(q));
+        
+        if (newQuestions.length > 0) {
+          logger.info(`New conditional questions appeared after filling ${field.questionNumber}: ${newQuestions.join(', ')}`);
+          
+          // Scan and add new conditional fields
+          const conditionalFields = await this.scanConditionalFields(page, newQuestions, field.questionNumber, filledValue);
+          
+          // Insert conditional fields right after the current field
+          for (let i = 0; i < conditionalFields.length; i++) {
+            allFields.splice(fieldIndex + 1 + i, 0, conditionalFields[i]);
+          }
+          
+          logger.info(`Added ${conditionalFields.length} conditional fields to processing queue`);
+        }
+        
+        fieldIndex++;
       } catch (error) {
         logger.error(`Failed to fill field ${field.questionNumber}:`, error);
         throw error;
       }
     }
     
-    // Also fill VAS sliders even if not marked as required (they need interaction to set values)
-    const vasFields = fields.filter(f => f.inputType === 'VAS' && !f.isRequired);
-    if (vasFields.length > 0) {
-      logger.info(`Filling ${vasFields.length} VAS slider fields (even if not required)`);
-      for (const field of vasFields) {
-        try {
-          await this.fillField(page, field);
-          // Small delay between fields to simulate user interaction
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-          logger.error(`Failed to fill VAS field ${field.questionNumber}:`, error);
-          // Don't throw for VAS fields, just log the error
-        }
-      }
-    }
+    logger.info(`Completed filling ${filledQuestions.size} fields (including ${allFields.length - fields.length} conditional fields)`);
+    return allFields;
   }
   
+  private async getVisibleQuestions(page: Page): Promise<string[]> {
+    return await page.evaluate(() => {
+      const container = document.querySelector('#survey-body-container');
+      if (!container) return [];
+      
+      const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+      const visibleQuestions: string[] = [];
+      
+      cardBoxes.forEach((cardBox) => {
+        // Check if visible
+        const style = window.getComputedStyle(cardBox);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return;
+        }
+        
+        // Find question number
+        const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+        for (const elem of textElements) {
+          const text = elem.textContent?.trim() || '';
+          const match = text.match(/^(\d+\.?\d*\.?)/);
+          if (match) {
+            visibleQuestions.push(match[1]);
+            break;
+          }
+        }
+      });
+      
+      return visibleQuestions;
+    });
+  }
+
+  private async fillFieldAndGetValue(page: Page, field: SurveyField): Promise<string | number> {
+    // Fill the field and return the actual value that was set
+    const testValue = field.testData?.testCases[0]?.value || 0;
+    
+    await this.fillField(page, field);
+    
+    // For radio buttons, return the index that was selected
+    if (field.inputType === 'radio') {
+      return typeof testValue === 'number' ? testValue : 0;
+    }
+    
+    // For other types, return the string value
+    return String(testValue);
+  }
+
+  private async scanConditionalFields(page: Page, newQuestionNumbers: string[], parentQuestion: string, parentValue: string | number): Promise<SurveyField[]> {
+    logger.info(`Scanning ${newQuestionNumbers.length} conditional fields that appeared after ${parentQuestion} = ${parentValue}`);
+    
+    // Import necessary services
+    const { TestDataGenerator } = await import('../test-generator/test-data-generator');
+    const testGenerator = new TestDataGenerator();
+    
+    const conditionalFields: SurveyField[] = [];
+    
+    for (const questionNumber of newQuestionNumbers) {
+      try {
+        const fieldData = await page.evaluate((qNum) => {
+          const container = document.querySelector('#survey-body-container');
+          if (!container) return null;
+          
+          // Find the CardBox with this question number
+          const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+          for (const cardBox of cardBoxes) {
+            const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+            let foundQuestion = false;
+            let questionText = '';
+            let isRequired = false;
+            
+            for (const elem of textElements) {
+              const text = elem.textContent?.trim() || '';
+              const match = text.match(/^(\d+\.?\d*\.?)\s*(.*)/);
+              if (match && match[1] === qNum) {
+                foundQuestion = true;
+                questionText = text;
+                isRequired = text.endsWith('*');
+                break;
+              }
+            }
+            
+            if (!foundQuestion) continue;
+            
+            // Extract field information
+            const inputs = cardBox.querySelectorAll('input, select, textarea');
+            if (inputs.length === 0) continue;
+            
+            const firstInput = inputs[0];
+            let inputType = 'text';
+            let selector = '';
+            const choices: string[] = [];
+            
+            if (firstInput.tagName === 'SELECT') {
+              inputType = 'dropdown';
+              selector = `#${firstInput.id}`;
+              const options = firstInput.querySelectorAll('option');
+              options.forEach(opt => {
+                if (opt.textContent?.trim()) {
+                  choices.push(opt.textContent.trim());
+                }
+              });
+            } else if (firstInput.tagName === 'TEXTAREA') {
+              inputType = 'textarea';
+              selector = `#${firstInput.id}`;
+            } else if ((firstInput as HTMLInputElement).type === 'radio') {
+              inputType = 'radio';
+              selector = `#${firstInput.id}`;
+              // Get all radio choices
+              const radioName = (firstInput as HTMLInputElement).name;
+              const radios = cardBox.querySelectorAll(`input[type="radio"][name="${radioName}"]`);
+              radios.forEach(radio => {
+                const label = radio.parentElement?.textContent?.trim() || 
+                            radio.nextSibling?.textContent?.trim() || '';
+                if (label) choices.push(label);
+              });
+            } else {
+              inputType = (firstInput as HTMLInputElement).type || 'text';
+              selector = `#${firstInput.id}`;
+            }
+            
+            // Check for VAS slider
+            if (cardBox.querySelector('[class*="SliderTrack"]')) {
+              inputType = 'VAS';
+              selector = '[class*="SliderTrack"]';
+            }
+            
+            // Generate CardBox selector
+            let cardBoxSelector = '';
+            if (cardBox.id) {
+              cardBoxSelector = `#${cardBox.id}`;
+            } else if (cardBox.className) {
+              cardBoxSelector = `.${cardBox.className.split(' ').join('.')}`;
+            }
+            
+            return {
+              questionNumber: qNum,
+              questionText: questionText.replace(/^\d+\.?\d*\.?\s*/, '').replace(/\*\s*$/, '').trim(),
+              inputType,
+              isRequired,
+              selector,
+              cardBoxSelector,
+              choices
+            };
+          }
+          
+          return null;
+        }, questionNumber);
+        
+        if (fieldData) {
+          // Generate test data
+          const testData = await testGenerator.generateTestData({
+            ...fieldData,
+            inputType: fieldData.inputType as any,
+            screenshotPath: '' // Will be set later
+          });
+          
+          // Create the conditional field
+          const conditionalField: SurveyField = {
+            ...fieldData,
+            inputType: fieldData.inputType as any,
+            screenshotPath: '', // Will be set when screenshot is taken
+            testData,
+            conditionalInfo: {
+              isConditional: true,
+              parentQuestion,
+              parentValue,
+              appearedAfter: new Date().toISOString()
+            }
+          };
+          
+          conditionalFields.push(conditionalField);
+          logger.info(`Scanned conditional field ${questionNumber}: ${fieldData.questionText} (${fieldData.inputType})`);
+        }
+      } catch (error) {
+        logger.error(`Error scanning conditional field ${questionNumber}:`, error);
+      }
+    }
+    
+    return conditionalFields;
+  }
+
   private async fillField(page: Page, field: SurveyField): Promise<void> {
     logger.info(`Filling field ${field.questionNumber} (${field.inputType}) with selector: ${field.selector}`);
     

@@ -29,6 +29,12 @@ export interface SurveyField {
   selector: string;
   cardBoxSelector: string;
   testData?: TestData;
+  conditionalInfo?: {
+    isConditional: boolean;
+    parentQuestion: string;
+    parentValue: string | number;
+    appearedAfter: string; // timestamp when it appeared
+  };
 }
 
 export interface TestData {

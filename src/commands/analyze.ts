@@ -74,7 +74,26 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
         // Fill required fields and navigate to next form
         try {
           logger.info('Filling required fields...');
-          await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
+          const allFields = await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
+          
+          // Update form fields to include any conditional fields that were discovered
+          form.fields = allFields;
+          
+          // Take screenshots for any conditional fields that don't have them yet
+          for (const field of allFields) {
+            if (!field.screenshotPath && field.conditionalInfo?.isConditional) {
+              logger.info(`Taking screenshot for conditional field ${field.questionNumber}`);
+              const screenshot = await screenshotService.takeFieldScreenshot(
+                puppeteerManager.getPage(), 
+                field, 
+                allFields.indexOf(field), 
+                tuple
+              );
+              if (screenshot) {
+                field.screenshotPath = screenshot;
+              }
+            }
+          }
           
           // Take on-exit screenshot before navigation
           logger.info('Taking on-exit screenshot before navigation...');

@@ -207,6 +207,10 @@ export class ScreenshotService {
     }
   }
 
+  async takeFieldScreenshot(page: Page, field: SurveyField, questionIndex: number, tuple: SurveyTuple, formIndex?: number): Promise<string | undefined> {
+    return this.takeQuestionScreenshot(page, field, questionIndex, tuple, formIndex);
+  }
+
   async takeQuestionScreenshot(page: Page, field: SurveyField, questionIndex: number, tuple: SurveyTuple, formIndex?: number): Promise<string | undefined> {
     try {
       const questionNum = field.questionNumber.replace(/\./g, '');
