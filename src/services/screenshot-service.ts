@@ -76,7 +76,8 @@ export class ScreenshotService {
         questionCount: questions.length
       });
       
-      return requiredHeight;
+      // Return integer value to avoid float precision issues with Puppeteer
+      return Math.floor(requiredHeight);
     });
   }
 
@@ -98,15 +99,32 @@ export class ScreenshotService {
         return;
       }
 
-      const extendedHeight = Math.max(formHeight + 200, currentViewport.height);
+      // Ensure height is an integer and within reasonable limits
+      const maxViewportHeight = 16384; // Chrome's maximum viewport height
+      const extendedHeight = Math.min(
+        Math.floor(Math.max(formHeight + 200, currentViewport.height)),
+        maxViewportHeight
+      );
+      
       logger.info(`Form height: ${formHeight}, extending viewport to: ${currentViewport.width}x${extendedHeight}`);
 
       // Extend viewport to include full form
-      await page.setViewport({
-        width: currentViewport.width,
-        height: extendedHeight,
-        deviceScaleFactor: currentViewport.deviceScaleFactor || 1
-      });
+      try {
+        await page.setViewport({
+          width: currentViewport.width,
+          height: extendedHeight,
+          deviceScaleFactor: currentViewport.deviceScaleFactor || 1
+        });
+      } catch (error) {
+        logger.warn(`Failed to set extended viewport (${extendedHeight}px), falling back to scrolling approach:`, error);
+        
+        // Fallback: Use default viewport and scroll to capture full form
+        await page.setViewport({
+          width: currentViewport.width,
+          height: Math.min(currentViewport.height, 2048), // Safe fallback height
+          deviceScaleFactor: currentViewport.deviceScaleFactor || 1
+        });
+      }
 
       await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
@@ -145,12 +163,30 @@ export class ScreenshotService {
         return;
       }
 
+      // Ensure height is an integer and within reasonable limits
+      const maxViewportHeight = 16384; // Chrome's maximum viewport height
+      const extendedHeight = Math.min(
+        Math.floor(Math.max(formHeight + 200, currentViewport.height)),
+        maxViewportHeight
+      );
+
       // Extend viewport to include full form
-      await page.setViewport({
-        width: currentViewport.width,
-        height: Math.max(formHeight + 200, currentViewport.height),
-        deviceScaleFactor: currentViewport.deviceScaleFactor || 1
-      });
+      try {
+        await page.setViewport({
+          width: currentViewport.width,
+          height: extendedHeight,
+          deviceScaleFactor: currentViewport.deviceScaleFactor || 1
+        });
+      } catch (error) {
+        logger.warn(`Failed to set extended viewport for exit screenshot (${extendedHeight}px), falling back to scrolling approach:`, error);
+        
+        // Fallback: Use default viewport
+        await page.setViewport({
+          width: currentViewport.width,
+          height: Math.min(currentViewport.height, 2048), // Safe fallback height
+          deviceScaleFactor: currentViewport.deviceScaleFactor || 1
+        });
+      }
 
       await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
