@@ -73,19 +73,14 @@ export class FormNavigator {
     logger.info(`Initial visible questions: ${initialQuestions.join(', ')}`);
     
     // Process fields in order, checking for new conditional fields after each one
-    let fieldIndex = 0;
-    while (fieldIndex < allFields.length) {
-      const field = allFields[fieldIndex];
-      
-      // Skip if already filled
+    for (const field of allFields) {
+      // Skip if already filled (including conditional fields filled immediately)
       if (filledQuestions.has(field.questionNumber)) {
-        fieldIndex++;
         continue;
       }
       
       // Check if field is required or VAS (VAS needs interaction even if not required)
       if (!field.isRequired && field.inputType !== 'VAS') {
-        fieldIndex++;
         continue;
       }
       
@@ -108,18 +103,62 @@ export class FormNavigator {
         if (newQuestions.length > 0) {
           logger.info(`New conditional questions appeared after filling ${field.questionNumber}: ${newQuestions.join(', ')}`);
           
-          // Scan and add new conditional fields
+          // Scan new conditional fields
           const conditionalFields = await this.scanConditionalFields(page, newQuestions, field.questionNumber, filledValue);
           
-          // Insert conditional fields right after the current field
-          for (let i = 0; i < conditionalFields.length; i++) {
-            allFields.splice(fieldIndex + 1 + i, 0, conditionalFields[i]);
+          // Fill conditional fields immediately
+          logger.info(`Processing ${conditionalFields.length} conditional fields for immediate filling`);
+          for (const conditionalField of conditionalFields) {
+            logger.info(`Conditional field ${conditionalField.questionNumber}: required=${conditionalField.isRequired}, type=${conditionalField.inputType}, selector=${conditionalField.selector}`);
+            // Always fill conditional fields, regardless of required status
+            // Since they appeared due to user action, they likely need values
+            if (true) {  // Was: if (conditionalField.isRequired || conditionalField.inputType === 'VAS') {
+              try {
+                logger.info(`Immediately filling conditional field ${conditionalField.questionNumber} (${conditionalField.inputType}) with selector: ${conditionalField.selector}`);
+                const conditionalValue = await this.fillFieldAndGetValue(page, conditionalField);
+                filledQuestions.add(conditionalField.questionNumber);
+                
+                // Add to allFields array for record keeping
+                allFields.push(conditionalField);
+                
+                // Wait after filling each conditional field
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Check if this conditional field triggered more conditional fields
+                const questionsAfterConditional = await this.getVisibleQuestions(page);
+                const nestedNewQuestions = questionsAfterConditional.filter(q => 
+                  !questionsAfter.includes(q) && !newQuestions.includes(q)
+                );
+                
+                if (nestedNewQuestions.length > 0) {
+                  logger.info(`Nested conditional questions appeared after filling ${conditionalField.questionNumber}: ${nestedNewQuestions.join(', ')}`);
+                  // Recursively handle nested conditional fields
+                  const nestedConditionalFields = await this.scanConditionalFields(
+                    page, 
+                    nestedNewQuestions, 
+                    conditionalField.questionNumber, 
+                    conditionalValue
+                  );
+                  
+                  for (const nestedField of nestedConditionalFields) {
+                    if (nestedField.isRequired || nestedField.inputType === 'VAS') {
+                      logger.info(`Immediately filling nested conditional field ${nestedField.questionNumber}`);
+                      await this.fillFieldAndGetValue(page, nestedField);
+                      filledQuestions.add(nestedField.questionNumber);
+                      allFields.push(nestedField);
+                      await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                  }
+                }
+              } catch (error) {
+                logger.error(`Failed to fill conditional field ${conditionalField.questionNumber}:`, error);
+                // Continue with other fields instead of throwing
+              }
+            }
           }
           
-          logger.info(`Added ${conditionalFields.length} conditional fields to processing queue`);
+          logger.info(`Filled ${conditionalFields.length} conditional fields immediately`);
         }
-        
-        fieldIndex++;
       } catch (error) {
         logger.error(`Failed to fill field ${field.questionNumber}:`, error);
         throw error;
@@ -249,18 +288,23 @@ export class FormNavigator {
               selector = `#${firstInput.id}`;
             }
             
-            // Check for VAS slider
-            if (cardBox.querySelector('[class*="SliderTrack"]')) {
-              inputType = 'VAS';
-              selector = '[class*="SliderTrack"]';
-            }
-            
-            // Generate CardBox selector
+            // Generate CardBox selector first
             let cardBoxSelector = '';
             if (cardBox.id) {
               cardBoxSelector = `#${cardBox.id}`;
             } else if (cardBox.className) {
               cardBoxSelector = `.${cardBox.className.split(' ').join('.')}`;
+            }
+            
+            // Check for VAS slider
+            if (cardBox.querySelector('[class*="SliderTrack"]')) {
+              inputType = 'VAS';
+              const sliderElement = cardBox.querySelector('[class*="SliderTrack"]');
+              if (sliderElement && sliderElement.id) {
+                selector = `#${sliderElement.id}`;
+              } else {
+                selector = `${cardBoxSelector} [class*="SliderTrack"]`;
+              }
             }
             
             return {
@@ -289,6 +333,7 @@ export class FormNavigator {
           const conditionalField: SurveyField = {
             ...fieldData,
             inputType: fieldData.inputType as any,
+            isRequired: true, // Force conditional fields to be required since they appeared due to user action
             screenshotPath: '', // Will be set when screenshot is taken
             testData,
             conditionalInfo: {
@@ -300,7 +345,7 @@ export class FormNavigator {
           };
           
           conditionalFields.push(conditionalField);
-          logger.info(`Scanned conditional field ${questionNumber}: ${fieldData.questionText} (${fieldData.inputType})`);
+          logger.info(`Scanned conditional field ${questionNumber}: ${fieldData.questionText} (${fieldData.inputType}) - selector: ${fieldData.selector}`);
         }
       } catch (error) {
         logger.error(`Error scanning conditional field ${questionNumber}:`, error);
