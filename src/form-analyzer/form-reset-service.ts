@@ -82,7 +82,10 @@ export class FormResetService {
     logger.info('Clearing form values...');
     
     try {
-      // Find all CardBox elements that contain fields
+      // First, specifically clear VAS sliders if any exist
+      await this.clearVASSliders(page);
+      
+      // Then find all CardBox elements that contain fields for general clearing
       const cardBoxes = await page.$$('[class*="CardBox"]');
       logger.info(`Found ${cardBoxes.length} CardBox elements to check for clearing`);
       
@@ -100,6 +103,139 @@ export class FormResetService {
       logger.info('Completed form value clearing');
     } catch (error) {
       logger.error('Error clearing form values:', error);
+    }
+  }
+
+  /**
+   * Clear VAS slider values specifically
+   */
+  private async clearVASSliders(page: Page): Promise<void> {
+    try {
+      // Find all VAS sliders on the current form
+      const vasSliders = await page.$$('[class*="SliderTrack"]');
+      
+      if (vasSliders.length === 0) {
+        logger.debug('No VAS sliders found on current form');
+        return;
+      }
+      
+      logger.info(`Found ${vasSliders.length} VAS slider(s) to clear`);
+      
+      for (let i = 0; i < vasSliders.length; i++) {
+        try {
+          await this.clearVASSlider(page, i);
+          // Small delay between clearing sliders
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error) {
+          logger.debug(`Could not clear VAS slider ${i + 1}:`, error);
+        }
+      }
+      
+      logger.info(`Completed VAS slider clearing for ${vasSliders.length} slider(s)`);
+    } catch (error) {
+      logger.error('Error clearing VAS sliders:', error);
+    }
+  }
+
+  /**
+   * Clear a specific VAS slider by resetting it to initial state
+   */
+  private async clearVASSlider(page: Page, sliderIndex: number): Promise<void> {
+    try {
+      // Method 1: Try to find and click a reset button if it exists
+      const resetResult = await page.evaluate((index) => {
+        const sliders = document.querySelectorAll('[class*="SliderTrack"]');
+        if (index >= sliders.length) return { success: false, reason: 'Slider not found' };
+        
+        const slider = sliders[index];
+        const sliderContainer = slider.closest('[class*="CardBox"]');
+        
+        if (!sliderContainer) return { success: false, reason: 'Container not found' };
+        
+        // Look for reset/clear buttons within the slider container
+        const resetButtons = sliderContainer.querySelectorAll('button');
+        for (const button of resetButtons) {
+          const text = button.textContent?.toLowerCase() || '';
+          if (text.includes('reset') || text.includes('clear') || text.includes('×') || text.includes('✕')) {
+            button.click();
+            return { success: true, method: 'reset_button', text: button.textContent };
+          }
+        }
+        
+        return { success: false, reason: 'No reset button found' };
+      }, sliderIndex);
+      
+      if (resetResult.success) {
+        logger.debug(`Cleared VAS slider ${sliderIndex + 1} using ${resetResult.method}: "${resetResult.text}"`);
+        return;
+      }
+      
+      // Method 2: Try to reset slider by manipulating its internal state
+      const manipulationResult = await page.evaluate((index) => {
+        const sliders = document.querySelectorAll('[class*="SliderTrack"]');
+        if (index >= sliders.length) return { success: false, reason: 'Slider not found' };
+        
+        const slider = sliders[index];
+        const sliderContainer = slider.closest('[class*="CardBox"]');
+        
+        if (!sliderContainer) return { success: false, reason: 'Container not found' };
+        
+        // Look for slider handle/thumb elements and try to reset them
+        const sliderHandles = sliderContainer.querySelectorAll('[class*="Handle"], [class*="Thumb"], [class*="Slider"]');
+        
+        // Try to trigger events that might reset the slider
+        for (const handle of sliderHandles) {
+          try {
+            // Try to set value to initial state
+            if (handle instanceof HTMLInputElement) {
+              const originalValue = handle.value;
+              handle.value = handle.min || '0';
+              handle.dispatchEvent(new Event('change', { bubbles: true }));
+              handle.dispatchEvent(new Event('input', { bubbles: true }));
+              return { success: true, method: 'input_reset', originalValue, newValue: handle.value };
+            }
+            
+            // Try to trigger mouse events to reset position
+            const rect = handle.getBoundingClientRect();
+            const clickEvent = new MouseEvent('click', {
+              bubbles: true,
+              clientX: rect.left, // Click at far left to reset
+              clientY: rect.top + rect.height / 2
+            });
+            handle.dispatchEvent(clickEvent);
+            return { success: true, method: 'mouse_reset' };
+          } catch (e) {
+            // Continue to next handle
+          }
+        }
+        
+        return { success: false, reason: 'No resettable elements found' };
+      }, sliderIndex);
+      
+      if (manipulationResult.success) {
+        logger.debug(`Cleared VAS slider ${sliderIndex + 1} using ${manipulationResult.method}`);
+        return;
+      }
+      
+      // Method 3: Try to click at the leftmost position of the slider track to reset
+      const sliderTrack = await page.$(`[class*="SliderTrack"]:nth-of-type(${sliderIndex + 1})`);
+      if (sliderTrack) {
+        const boundingBox = await sliderTrack.boundingBox();
+        if (boundingBox) {
+          // Click at the far left (should be minimum/reset position)
+          const clickX = boundingBox.x + 5; // Small offset from left edge
+          const clickY = boundingBox.y + boundingBox.height / 2;
+          
+          await page.mouse.click(clickX, clickY);
+          logger.debug(`Cleared VAS slider ${sliderIndex + 1} by clicking at reset position (${Math.round(clickX)}, ${Math.round(clickY)})`);
+          return;
+        }
+      }
+      
+      logger.debug(`Could not clear VAS slider ${sliderIndex + 1} - no reset method worked`);
+      
+    } catch (error) {
+      logger.debug(`Error clearing VAS slider ${sliderIndex + 1}:`, error);
     }
   }
 
