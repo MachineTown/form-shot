@@ -3,6 +3,7 @@ import { join } from 'path';
 import { PuppeteerManager } from '../browser/puppeteer-manager';
 import { FormNavigator } from '../form-analyzer/form-navigator';
 import { SurveyFormDetector } from '../form-analyzer/survey-detector';
+import { FormResetService } from '../form-analyzer/form-reset-service';
 import { ScreenshotService } from '../services/screenshot-service';
 import { logger } from '../utils/logger';
 import { Survey, SurveyForm, SurveyTuple } from '../utils/types';
@@ -11,6 +12,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
   const puppeteerManager = new PuppeteerManager();
   const formDetector = new SurveyFormDetector();
   const formNavigator = new FormNavigator();
+  const formResetService = new FormResetService();
   const screenshotService = new ScreenshotService();
   
   try {
@@ -23,6 +25,16 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
     // Set default viewport (767x1024)
     await screenshotService.setDefaultViewport(puppeteerManager.getPage());
     
+    // Reset form to first form and clear any existing values
+    logger.info('Checking if we need to navigate to first form...');
+    const isFirstForm = await formResetService.isFirstForm(puppeteerManager.getPage());
+    if (!isFirstForm) {
+      logger.info('Not on first form, navigating to first form...');
+      await formResetService.navigateToFirstForm(puppeteerManager.getPage());
+    } else {
+      logger.info('Already on first form');
+    }
+    
     const forms: SurveyForm[] = [];
     let formIndex = 0;
     let isLastForm = false;
@@ -30,7 +42,11 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
     while (!isLastForm) {
       logger.info(`Analyzing form ${formIndex + 1}...`);
       
-      // Take on-entry screenshot before any interaction
+      // Clear any existing values from the form before analysis
+      logger.info('Clearing any existing field values...');
+      await formResetService.clearFormValues(puppeteerManager.getPage());
+      
+      // Take on-entry screenshot after clearing values
       const onEntryScreenshot = await screenshotService.takeOnEntryScreenshot(puppeteerManager.getPage(), {} as SurveyForm, formIndex, tuple);
       
       // Detect current form
