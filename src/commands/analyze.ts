@@ -106,7 +106,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
           // Additional check: verify we're actually on a different form
           const newFormPreview = await puppeteerManager.getPage().evaluate(() => {
             const container = document.querySelector('#survey-body-container');
-            if (!container) return { title: '', shortName: '', questionCount: 0, hasVASSlider: false };
+            if (!container) return { title: '', shortName: '', questionCount: 0, hasVASSlider: false, questionText: '' };
             
             // Use same title detection logic as extractFormTitles()
             const allPs = container.querySelectorAll('p');
@@ -136,16 +136,26 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
             // Check for VAS slider
             const hasVASSlider = container.querySelector('[class*="SliderTrack"]') !== null;
             
-            return { title, shortName, questionCount: questions.length, hasVASSlider };
+            // Get first question text for comparison
+            let questionText = '';
+            if (questions.length > 0) {
+              const firstQuestion = questions[0];
+              const questionTextElement = firstQuestion.querySelector('h4, h5, h6, p, span, div[class*="question"], [class*="Question"]');
+              questionText = questionTextElement?.textContent?.trim().substring(0, 100) || '';
+            }
+            
+            return { title, shortName, questionCount: questions.length, hasVASSlider, questionText };
           });
           
           logger.info(`New form preview: "${newFormPreview.title}" (${newFormPreview.shortName}) with ${newFormPreview.questionCount} questions, VAS: ${newFormPreview.hasVASSlider}`);
+          logger.info(`Question text preview: "${newFormPreview.questionText.substring(0, 50)}..."`);
           
-          // Check if we're stuck by comparing both title AND short name
-          if (newFormPreview.title === form.longTitle && 
-              newFormPreview.shortName === form.shortName && 
-              newFormPreview.questionCount === form.fields.length) {
-            logger.warn('Detected same form after navigation (same title, short name, and question count). Stopping analysis.');
+          // Check if we're stuck by comparing short name AND question text content (more specific than just counts)
+          const currentQuestionText = form.fields.length > 0 ? form.fields[0].questionText.substring(0, 100) : '';
+          
+          if (newFormPreview.shortName === form.shortName && 
+              newFormPreview.questionText === currentQuestionText) {
+            logger.warn(`Detected same form after navigation (same short name "${form.shortName}" and question text). Stopping analysis.`);
             break;
           }
           
