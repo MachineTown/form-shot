@@ -154,7 +154,7 @@ export class FormResetService {
         await baseButton.click();
         
         // Wait for action to complete with longer timeout for VAS
-        const completionWait = fieldInfo.type === 'VAS' ? 500 : 200;
+        const completionWait = fieldInfo.type === 'VAS' ? 1000 : 200;
         await new Promise(resolve => setTimeout(resolve, completionWait));
         
         // For VAS fields, verify if clearing worked
