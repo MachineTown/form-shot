@@ -339,13 +339,17 @@ export class FormNavigator {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   
-  async clickNavigationButton(page: Page, type: 'next' | 'previous' | 'finish'): Promise<void> {
+  async clickNavigationButton(page: Page, type: 'next' | 'previous' | 'finish', navDelay: number = 3000): Promise<void> {
     const buttons = await this.detectNavigationButtons(page);
     const button = buttons.find(b => b.type === type && b.isEnabled);
     
     if (!button) {
       throw new Error(`No enabled ${type} button found`);
     }
+    
+    // Add configurable pause before clicking navigation button
+    logger.info(`Pausing ${navDelay / 1000} seconds before clicking ${type} button: "${button.text}"`);
+    await new Promise(resolve => setTimeout(resolve, navDelay));
     
     logger.info(`Clicking ${type} button: "${button.text}"`);
     

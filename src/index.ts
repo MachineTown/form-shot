@@ -26,14 +26,18 @@ program
   .description('Analyze survey form at given URL')
   .argument('<url>', 'URL of the survey form to analyze')
   .argument('<tuple>', 'Tuple string in format: [customer_id,study_id,package_name,language,version]')
-  .action(async (url: string, tupleString: string) => {
+  .option('--nav-delay <seconds>', 'Pause in seconds before clicking navigation buttons (default: 3)', '3')
+  .action(async (url: string, tupleString: string, options) => {
     try {
       // Parse the tuple string
       const tuple = parseTupleString(tupleString);
+      const navDelay = parseInt(options.navDelay) * 1000; // Convert to milliseconds
+      
       logger.info(`Starting analysis of ${url}`);
       logger.info(`Tuple: ${JSON.stringify(tuple)}`);
+      logger.info(`Navigation delay: ${options.navDelay} seconds`);
       
-      await analyzeSurvey(url, tuple);
+      await analyzeSurvey(url, tuple, navDelay);
     } catch (error) {
       logger.error('Analysis failed:', error);
       process.exit(1);

@@ -93,6 +93,9 @@ After you make chaneges to the code, always rebuild the code and container
 1. Analyze survey (with automatic test data generation):
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
 
+# With custom navigation delay (5 seconds instead of default 3 seconds):
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --nav-delay 5
+
 2. Upload analysis to Firestore (includes test data):
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 

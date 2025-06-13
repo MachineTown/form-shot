@@ -8,7 +8,7 @@ import { ScreenshotService } from '../services/screenshot-service';
 import { logger } from '../utils/logger';
 import { Survey, SurveyForm, SurveyTuple } from '../utils/types';
 
-export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<void> {
+export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: number = 3000): Promise<void> {
   const puppeteerManager = new PuppeteerManager();
   const formDetector = new SurveyFormDetector();
   const formNavigator = new FormNavigator();
@@ -30,7 +30,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
     const isFirstForm = await formResetService.isFirstForm(puppeteerManager.getPage());
     if (!isFirstForm) {
       logger.info('Not on first form, navigating to first form...');
-      await formResetService.navigateToFirstForm(puppeteerManager.getPage());
+      await formResetService.navigateToFirstForm(puppeteerManager.getPage(), navDelay);
     } else {
       logger.info('Already on first form');
     }
@@ -84,7 +84,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
           }
           
           logger.info('Clicking next button...');
-          await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next');
+          await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
           
           // Check for validation modal
           const hasModal = await formNavigator.detectValidationModal(puppeteerManager.getPage());
@@ -93,7 +93,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple): Promise<vo
             await formNavigator.closeValidationModal(puppeteerManager.getPage());
             // Try to fill any missing fields and click next again
             await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
-            await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next');
+            await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
           }
           
           // Wait for form transition

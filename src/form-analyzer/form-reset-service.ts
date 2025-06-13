@@ -27,7 +27,7 @@ export class FormResetService {
   /**
    * Navigate to the first form by clicking previous buttons until no more previous buttons exist
    */
-  async navigateToFirstForm(page: Page): Promise<void> {
+  async navigateToFirstForm(page: Page, navDelay: number = 3000): Promise<void> {
     logger.info('Navigating to first form...');
     
     let attempts = 0;
@@ -46,7 +46,7 @@ export class FormResetService {
       
       // Click previous button using a more robust approach
       try {
-        const clicked = await this.clickPreviousButtonRobust(page);
+        const clicked = await this.clickPreviousButtonRobust(page, navDelay);
         if (!clicked) {
           logger.info('No previous button available, assuming we reached first form');
           break;
@@ -248,7 +248,7 @@ export class FormResetService {
   /**
    * More robust previous button clicking with fallback strategies
    */
-  private async clickPreviousButtonRobust(page: Page): Promise<boolean> {
+  private async clickPreviousButtonRobust(page: Page, navDelay: number = 3000): Promise<boolean> {
     try {
       // Strategy 1: Use the previous button detection
       const navButtons = await this.detectNavigationButtons(page);
@@ -258,6 +258,10 @@ export class FormResetService {
         logger.debug('No previous button found');
         return false;
       }
+      
+      // Add configurable pause before clicking previous button
+      logger.info(`Pausing ${navDelay / 1000} seconds before clicking previous button: "${previousButton.text}"`);
+      await new Promise(resolve => setTimeout(resolve, navDelay));
       
       logger.debug(`Attempting to click previous button: "${previousButton.text}"`);
       
