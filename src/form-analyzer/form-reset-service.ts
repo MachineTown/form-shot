@@ -82,10 +82,7 @@ export class FormResetService {
     logger.info('Clearing form values...');
     
     try {
-      // First, specifically clear VAS sliders if any exist
-      await this.clearVASSliders(page);
-      
-      // Then find all CardBox elements that contain fields for general clearing
+      // Find all CardBox elements that contain fields for clearing
       const cardBoxes = await page.$$('[class*="CardBox"]');
       logger.info(`Found ${cardBoxes.length} CardBox elements to check for clearing`);
       
@@ -93,7 +90,7 @@ export class FormResetService {
         try {
           await this.clearFieldValue(page, i);
           // Small delay between clearing fields
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 300));
         } catch (error) {
           logger.debug(`Could not clear field ${i + 1}:`, error);
           // Continue to next field even if this one fails
@@ -106,170 +103,101 @@ export class FormResetService {
     }
   }
 
-  /**
-   * Clear VAS slider values specifically
-   */
-  private async clearVASSliders(page: Page): Promise<void> {
-    try {
-      // Find all VAS sliders on the current form
-      const vasSliders = await page.$$('[class*="SliderTrack"]');
-      
-      if (vasSliders.length === 0) {
-        logger.debug('No VAS sliders found on current form');
-        return;
-      }
-      
-      logger.info(`Found ${vasSliders.length} VAS slider(s) to clear`);
-      
-      for (let i = 0; i < vasSliders.length; i++) {
-        try {
-          await this.clearVASSlider(page, i);
-          // Small delay between clearing sliders
-          await new Promise(resolve => setTimeout(resolve, 300));
-        } catch (error) {
-          logger.debug(`Could not clear VAS slider ${i + 1}:`, error);
-        }
-      }
-      
-      logger.info(`Completed VAS slider clearing for ${vasSliders.length} slider(s)`);
-    } catch (error) {
-      logger.error('Error clearing VAS sliders:', error);
-    }
-  }
-
-  /**
-   * Clear a specific VAS slider by resetting it to initial state
-   */
-  private async clearVASSlider(page: Page, sliderIndex: number): Promise<void> {
-    try {
-      // Method 1: Try to find and click a reset button if it exists
-      const resetResult = await page.evaluate((index) => {
-        const sliders = document.querySelectorAll('[class*="SliderTrack"]');
-        if (index >= sliders.length) return { success: false, reason: 'Slider not found' };
-        
-        const slider = sliders[index];
-        const sliderContainer = slider.closest('[class*="CardBox"]');
-        
-        if (!sliderContainer) return { success: false, reason: 'Container not found' };
-        
-        // Look for reset/clear buttons within the slider container
-        const resetButtons = sliderContainer.querySelectorAll('button');
-        for (const button of resetButtons) {
-          const text = button.textContent?.toLowerCase() || '';
-          if (text.includes('reset') || text.includes('clear') || text.includes('×') || text.includes('✕')) {
-            button.click();
-            return { success: true, method: 'reset_button', text: button.textContent };
-          }
-        }
-        
-        return { success: false, reason: 'No reset button found' };
-      }, sliderIndex);
-      
-      if (resetResult.success) {
-        logger.debug(`Cleared VAS slider ${sliderIndex + 1} using ${resetResult.method}: "${resetResult.text}"`);
-        return;
-      }
-      
-      // Method 2: Try to reset slider by manipulating its internal state
-      const manipulationResult = await page.evaluate((index) => {
-        const sliders = document.querySelectorAll('[class*="SliderTrack"]');
-        if (index >= sliders.length) return { success: false, reason: 'Slider not found' };
-        
-        const slider = sliders[index];
-        const sliderContainer = slider.closest('[class*="CardBox"]');
-        
-        if (!sliderContainer) return { success: false, reason: 'Container not found' };
-        
-        // Look for slider handle/thumb elements and try to reset them
-        const sliderHandles = sliderContainer.querySelectorAll('[class*="Handle"], [class*="Thumb"], [class*="Slider"]');
-        
-        // Try to trigger events that might reset the slider
-        for (const handle of sliderHandles) {
-          try {
-            // Try to set value to initial state
-            if (handle instanceof HTMLInputElement) {
-              const originalValue = handle.value;
-              handle.value = handle.min || '0';
-              handle.dispatchEvent(new Event('change', { bubbles: true }));
-              handle.dispatchEvent(new Event('input', { bubbles: true }));
-              return { success: true, method: 'input_reset', originalValue, newValue: handle.value };
-            }
-            
-            // Try to trigger mouse events to reset position
-            const rect = handle.getBoundingClientRect();
-            const clickEvent = new MouseEvent('click', {
-              bubbles: true,
-              clientX: rect.left, // Click at far left to reset
-              clientY: rect.top + rect.height / 2
-            });
-            handle.dispatchEvent(clickEvent);
-            return { success: true, method: 'mouse_reset' };
-          } catch (e) {
-            // Continue to next handle
-          }
-        }
-        
-        return { success: false, reason: 'No resettable elements found' };
-      }, sliderIndex);
-      
-      if (manipulationResult.success) {
-        logger.debug(`Cleared VAS slider ${sliderIndex + 1} using ${manipulationResult.method}`);
-        return;
-      }
-      
-      // Method 3: Try to click at the leftmost position of the slider track to reset
-      const sliderTrack = await page.$(`[class*="SliderTrack"]:nth-of-type(${sliderIndex + 1})`);
-      if (sliderTrack) {
-        const boundingBox = await sliderTrack.boundingBox();
-        if (boundingBox) {
-          // Click at the far left (should be minimum/reset position)
-          const clickX = boundingBox.x + 5; // Small offset from left edge
-          const clickY = boundingBox.y + boundingBox.height / 2;
-          
-          await page.mouse.click(clickX, clickY);
-          logger.debug(`Cleared VAS slider ${sliderIndex + 1} by clicking at reset position (${Math.round(clickX)}, ${Math.round(clickY)})`);
-          return;
-        }
-      }
-      
-      logger.debug(`Could not clear VAS slider ${sliderIndex + 1} - no reset method worked`);
-      
-    } catch (error) {
-      logger.debug(`Error clearing VAS slider ${sliderIndex + 1}:`, error);
-    }
-  }
 
   /**
    * Clear a specific field value using ActionMenu button
    */
   private async clearFieldValue(page: Page, fieldIndex: number): Promise<void> {
-    // Try to find ActionMenu button within this CardBox
-    const actionMenuSelector = `[class*="CardBox"]:nth-of-type(${fieldIndex + 1}) [class*="ActionMenu"]`;
-    
-    const actionMenuButton = await page.$(actionMenuSelector);
-    if (!actionMenuButton) {
-      logger.debug(`No ActionMenu found for field ${fieldIndex + 1}`);
-      return;
-    }
-    
-    logger.debug(`Clicking ActionMenu for field ${fieldIndex + 1}`);
-    await actionMenuButton.click();
-    
-    // Wait for popup menu to appear
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // Look for BaseButton in the popup menu
-    const baseButtonSelector = '[class*="BaseButton"]';
-    const baseButton = await page.$(baseButtonSelector);
-    
-    if (baseButton) {
-      logger.debug(`Clicking BaseButton to clear field ${fieldIndex + 1}`);
-      await baseButton.click();
+    try {
+      // First, check what type of field this is for better logging
+      const fieldInfo = await page.evaluate((index) => {
+        const cardBoxes = document.querySelectorAll('[class*="CardBox"]');
+        if (index >= cardBoxes.length) return { type: 'unknown', hasVAS: false };
+        
+        const cardBox = cardBoxes[index];
+        const hasVAS = cardBox.querySelector('[class*="SliderTrack"]') !== null;
+        const hasRadio = cardBox.querySelector('input[type="radio"]') !== null;
+        const hasText = cardBox.querySelector('input[type="text"], textarea') !== null;
+        
+        let type = 'unknown';
+        if (hasVAS) type = 'VAS';
+        else if (hasRadio) type = 'radio';
+        else if (hasText) type = 'text';
+        
+        return { type, hasVAS, hasRadio, hasText };
+      }, fieldIndex);
       
-      // Wait for action to complete
-      await new Promise(resolve => setTimeout(resolve, 200));
-    } else {
-      logger.debug(`No BaseButton found in popup for field ${fieldIndex + 1}`);
+      logger.debug(`Clearing field ${fieldIndex + 1} (type: ${fieldInfo.type})`);
+      
+      // Try to find ActionMenu button within this CardBox
+      const actionMenuSelector = `[class*="CardBox"]:nth-of-type(${fieldIndex + 1}) [class*="ActionMenu"]`;
+      
+      const actionMenuButton = await page.$(actionMenuSelector);
+      if (!actionMenuButton) {
+        logger.debug(`No ActionMenu found for field ${fieldIndex + 1} (${fieldInfo.type})`);
+        return;
+      }
+      
+      logger.info(`Clicking ActionMenu for field ${fieldIndex + 1} (${fieldInfo.type})`);
+      await actionMenuButton.click();
+      
+      // Wait for popup menu to appear with longer timeout for VAS
+      const waitTime = fieldInfo.type === 'VAS' ? 500 : 300;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Look for BaseButton in the popup menu
+      const baseButtonSelector = '[class*="BaseButton"]';
+      const baseButton = await page.$(baseButtonSelector);
+      
+      if (baseButton) {
+        logger.info(`Clicking BaseButton to clear field ${fieldIndex + 1} (${fieldInfo.type})`);
+        await baseButton.click();
+        
+        // Wait for action to complete with longer timeout for VAS
+        const completionWait = fieldInfo.type === 'VAS' ? 500 : 200;
+        await new Promise(resolve => setTimeout(resolve, completionWait));
+        
+        // For VAS fields, verify if clearing worked
+        if (fieldInfo.type === 'VAS') {
+          const vasCleared = await page.evaluate((index) => {
+            const cardBoxes = document.querySelectorAll('[class*="CardBox"]');
+            if (index >= cardBoxes.length) return false;
+            
+            const cardBox = cardBoxes[index];
+            const slider = cardBox.querySelector('[class*="SliderTrack"]');
+            
+            // Check if there's any visual indication that the slider is set/filled
+            if (slider) {
+              const sliderElements = cardBox.querySelectorAll('[class*="Handle"], [class*="Thumb"], [class*="Fill"]');
+              for (const element of sliderElements) {
+                const style = window.getComputedStyle(element);
+                // Look for indicators that the slider has a value
+                if (style.left && style.left !== '0px' && style.left !== 'auto') {
+                  return false; // Still has value
+                }
+                if (style.width && parseFloat(style.width) > 10) {
+                  return false; // Fill width indicates value
+                }
+              }
+            }
+            return true; // Appears cleared
+          }, fieldIndex);
+          
+          logger.info(`VAS field ${fieldIndex + 1} clear verification: ${vasCleared ? 'SUCCESS' : 'FAILED'}`);
+        }
+        
+        logger.info(`Successfully cleared field ${fieldIndex + 1} (${fieldInfo.type})`);
+      } else {
+        logger.debug(`No BaseButton found in popup for field ${fieldIndex + 1} (${fieldInfo.type})`);
+        
+        // Try to close the menu by clicking elsewhere
+        await page.evaluate(() => {
+          document.body.click();
+        });
+      }
+      
+    } catch (error) {
+      logger.debug(`Error clearing field ${fieldIndex + 1}:`, error);
     }
   }
 
