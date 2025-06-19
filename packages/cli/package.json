@@ -14,12 +14,12 @@
   },
   "dependencies": {
     "@form-shot/shared": "workspace:*",
-    "commander": "^11.0.0"
+    "commander": "^14.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.5.0",
-    "ts-node": "^10.9.1",
-    "typescript": "^5.1.6"
+    "@types/node": "^24.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   },
   "engines": {
     "node": ">=18.0.0"
