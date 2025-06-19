@@ -262,7 +262,12 @@ export class FormNavigator {
             
             if (firstInput.tagName === 'SELECT') {
               inputType = 'dropdown';
-              selector = `#${firstInput.id}`;
+              const inputId = firstInput.id;
+              if (inputId && /^\d/.test(inputId)) {
+                selector = `#\\3${inputId.charAt(0)} ${inputId.substring(1)}`;
+              } else {
+                selector = `#${inputId}`;
+              }
               const options = firstInput.querySelectorAll('option');
               options.forEach(opt => {
                 if (opt.textContent?.trim()) {
@@ -271,10 +276,20 @@ export class FormNavigator {
               });
             } else if (firstInput.tagName === 'TEXTAREA') {
               inputType = 'textarea';
-              selector = `#${firstInput.id}`;
+              const inputId = firstInput.id;
+              if (inputId && /^\d/.test(inputId)) {
+                selector = `#\\3${inputId.charAt(0)} ${inputId.substring(1)}`;
+              } else {
+                selector = `#${inputId}`;
+              }
             } else if ((firstInput as HTMLInputElement).type === 'radio') {
               inputType = 'radio';
-              selector = `#${firstInput.id}`;
+              const inputId = firstInput.id;
+              if (inputId && /^\d/.test(inputId)) {
+                selector = `#\\3${inputId.charAt(0)} ${inputId.substring(1)}`;
+              } else {
+                selector = `#${inputId}`;
+              }
               // Get all radio choices
               const radioName = (firstInput as HTMLInputElement).name;
               const radios = cardBox.querySelectorAll(`input[type="radio"][name="${radioName}"]`);
@@ -285,15 +300,41 @@ export class FormNavigator {
               });
             } else {
               inputType = (firstInput as HTMLInputElement).type || 'text';
-              selector = `#${firstInput.id}`;
+              const inputId = firstInput.id;
+              if (inputId && /^\d/.test(inputId)) {
+                selector = `#\\3${inputId.charAt(0)} ${inputId.substring(1)}`;
+              } else {
+                selector = `#${inputId}`;
+              }
             }
             
             // Generate CardBox selector first
             let cardBoxSelector = '';
             if (cardBox.id) {
               cardBoxSelector = `#${cardBox.id}`;
-            } else if (cardBox.className) {
-              cardBoxSelector = `.${cardBox.className.split(' ').join('.')}`;
+            } else {
+              // Create a more specific selector based on the question number
+              // This is more reliable than position since conditional fields appear dynamically
+              const questionNumElement = cardBox.querySelector('h4, h5, h6, span, p, div');
+              if (questionNumElement && questionNumElement.textContent?.match(/^(\d+\.?\d*\.?)/)) {
+                // Use a data attribute if available, or create a unique selector
+                const dataAttrs = Array.from(cardBox.attributes).filter(attr => attr.name.startsWith('data-'));
+                if (dataAttrs.length > 0) {
+                  cardBoxSelector = `[${dataAttrs[0].name}="${dataAttrs[0].value}"]`;
+                } else {
+                  // Use contains text selector as fallback
+                  const questionNum = questionNumElement.textContent.match(/^(\d+\.?\d*\.?)/)?.[1];
+                  cardBoxSelector = `[class*="CardBox"]`; // Will be combined with question number check
+                }
+              } else if (cardBox.className) {
+                // Fallback to class-based selector
+                const cardBoxClass = cardBox.className.split(' ').find(c => c.includes('CardBox'));
+                if (cardBoxClass) {
+                  cardBoxSelector = `[class*="${cardBoxClass}"]`;
+                } else {
+                  cardBoxSelector = `.${cardBox.className.split(' ').join('.')}`;
+                }
+              }
             }
             
             // Check for VAS slider
@@ -329,13 +370,15 @@ export class FormNavigator {
             screenshotPath: '' // Will be set later
           });
           
-          // Create the conditional field
+          // Create the conditional field with improved cardBoxSelector
           const conditionalField: SurveyField = {
             ...fieldData,
             inputType: fieldData.inputType as any,
             isRequired: true, // Force conditional fields to be required since they appeared due to user action
             screenshotPath: '', // Will be set when screenshot is taken
             testData,
+            // Override generic cardBoxSelector with question-specific one
+            cardBoxSelector: `#survey-body-container [class*="CardBox"]:has(:contains("${questionNumber}"))`,
             conditionalInfo: {
               isConditional: true,
               parentQuestion,
@@ -345,7 +388,7 @@ export class FormNavigator {
           };
           
           conditionalFields.push(conditionalField);
-          logger.info(`Scanned conditional field ${questionNumber}: ${fieldData.questionText} (${fieldData.inputType}) - selector: ${fieldData.selector}`);
+          logger.info(`Scanned conditional field ${questionNumber}: ${fieldData.questionText} (${fieldData.inputType}) - selector: ${fieldData.selector}, cardBoxSelector: ${fieldData.cardBoxSelector}`);
         }
       } catch (error) {
         logger.error(`Error scanning conditional field ${questionNumber}:`, error);
@@ -386,14 +429,59 @@ export class FormNavigator {
         // Try multiple approaches to select radio buttons
         let radioSelected = false;
         
+        // Log the selector we're using
+        logger.info(`Attempting to fill radio field with selector: ${field.selector}, cardBoxSelector: ${field.cardBoxSelector}`);
+        
         // Approach 1: Try to use the cardBoxSelector to find all radios in the question
         if (field.cardBoxSelector && !radioSelected) {
           try {
-            const radioButtons = await page.$$(`${field.cardBoxSelector} input[type="radio"]`);
-            if (radioButtons.length > radioIndex) {
-              await radioButtons[radioIndex].click();
-              radioSelected = true;
-              logger.info(`Selected radio button ${radioIndex} using cardBox selector`);
+            // For conditional fields with generic selector, find by question number
+            if (field.conditionalInfo?.isConditional && field.cardBoxSelector === '[class*="CardBox"]') {
+              // Use page.evaluate directly to find and click the radio button
+              const result = await page.evaluate((questionNum: string, radioIdx: number) => {
+                const cardBoxes = document.querySelectorAll('#survey-body-container [class*="CardBox"]');
+                for (const cardBox of cardBoxes) {
+                  const text = cardBox.textContent || '';
+                  if (text.includes(questionNum)) {
+                    // Found the right CardBox, now find radio buttons
+                    const radios = cardBox.querySelectorAll('input[type="radio"]');
+                    if (radios.length > radioIdx) {
+                      const radio = radios[radioIdx] as HTMLInputElement;
+                      radio.scrollIntoView({ block: 'center' });
+                      radio.click();
+                      return { clicked: true, count: radios.length, found: true };
+                    }
+                    return { clicked: false, count: radios.length, found: true };
+                  }
+                }
+                return { clicked: false, count: 0, found: false };
+              }, field.questionNumber, radioIndex);
+              
+              if (result.found) {
+                logger.info(`Found specific CardBox for question ${field.questionNumber} with ${result.count} radio buttons`);
+                if (result.clicked) {
+                  radioSelected = true;
+                  logger.info(`Selected radio button ${radioIndex} for conditional field using specific CardBox`);
+                } else {
+                  logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox`);
+                }
+              } else {
+                logger.warn(`Could not find CardBox for question ${field.questionNumber}`);
+              }
+            } else {
+              // Original approach for non-conditional fields
+              const radioButtons = await page.$$(`${field.cardBoxSelector} input[type="radio"]`);
+              logger.info(`CardBox selector search found ${radioButtons.length} radio buttons`);
+              
+              if (radioButtons.length > radioIndex) {
+                // Make sure element is visible before clicking
+                await radioButtons[radioIndex].evaluate(el => el.scrollIntoView({ block: 'center' }));
+                await radioButtons[radioIndex].click();
+                radioSelected = true;
+                logger.info(`Selected radio button ${radioIndex} using cardBox selector (found ${radioButtons.length} radio buttons)`);
+              } else {
+                logger.warn(`CardBox selector found ${radioButtons.length} radio buttons, but trying to select index ${radioIndex}`);
+              }
             }
           } catch (error) {
             logger.debug(`CardBox radio selection failed: ${error}`);
@@ -434,6 +522,46 @@ export class FormNavigator {
         
         if (!radioSelected) {
           throw new Error(`Failed to select radio button for field ${field.questionNumber}`);
+        }
+        
+        // Wait a bit for the click to register
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Verify the radio was actually selected
+        const verifyResult = await page.evaluate((selector, cardBoxSel) => {
+          // First check the specific radio
+          const radio = document.querySelector(selector);
+          if (radio && (radio as HTMLInputElement).checked) {
+            return { checked: true, method: 'direct' };
+          }
+          
+          // If not, check all radios in the CardBox
+          if (cardBoxSel) {
+            const radios = document.querySelectorAll(`${cardBoxSel} input[type="radio"]`);
+            for (let i = 0; i < radios.length; i++) {
+              if ((radios[i] as HTMLInputElement).checked) {
+                return { checked: true, method: 'cardbox', index: i };
+              }
+            }
+          }
+          
+          return { checked: false };
+        }, field.selector, field.cardBoxSelector);
+        
+        if (!verifyResult.checked) {
+          logger.warn(`Radio button for field ${field.questionNumber} was clicked but not checked. Trying alternative approach.`);
+          // Try clicking the label or parent element
+          await page.evaluate((selector) => {
+            const radio = document.querySelector(selector);
+            if (radio) {
+              const label = radio.closest('label') || radio.parentElement;
+              if (label) {
+                (label as HTMLElement).click();
+              }
+            }
+          }, field.selector);
+        } else {
+          logger.info(`Radio button verified as checked using ${verifyResult.method} method${verifyResult.index !== undefined ? ` at index ${verifyResult.index}` : ''}`);
         }
         break;
         
