@@ -1,6 +1,6 @@
 # Form-Shot Survey Analysis Tool
 
-An automated survey form analysis tool that captures form fields, screenshots, and metadata from web surveys. Built with TypeScript and Puppeteer, containerized with Docker, and integrated with Firestore for cloud storage.
+An automated survey form analysis tool that captures form fields, screenshots, and metadata from web surveys. Built as a pnpm monorepo with TypeScript and Puppeteer, containerized with Docker, and integrated with Firestore for cloud storage.
 
 ## Features
 
@@ -22,6 +22,8 @@ An automated survey form analysis tool that captures form fields, screenshots, a
 ## Prerequisites
 
 - Docker installed on your system
+- pnpm 8+ (for development only)
+- Node.js 18+ LTS (for development only)
 - Firestore service account credentials (optional, for cloud upload)
 
 ## Quick Start
@@ -29,7 +31,7 @@ An automated survey form analysis tool that captures form fields, screenshots, a
 ### 1. Build the Docker Container
 
 ```bash
-npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
+pnpm build && docker build -f Dockerfile.runtime -t form-shot-runtime .
 ```
 
 ### 2. Run Survey Analysis
@@ -449,18 +451,73 @@ Ensure your service account has the following roles:
 
 ## Development
 
-For local development without Docker:
+Form-Shot is structured as a pnpm monorepo with the following packages:
+
+```
+form-shot/
+├── packages/
+│   ├── cli/        # CLI application
+│   ├── shared/     # Shared business logic, services, and types
+│   └── ui/         # Future React UI (placeholder)
+```
+
+### Setup Development Environment
 
 ```bash
+# Install pnpm globally
+npm install -g pnpm@8.15.0
+
+# Or use corepack (comes with Node.js 16+)
+corepack enable
+corepack prepare pnpm@8.15.0 --activate
+
 # Install dependencies
-npm install
+pnpm install
 
-# Build TypeScript
-npm run build  
+# Build all packages
+pnpm build
 
-# Run locally
-node dist/index.js analyze <URL> <TUPLE>
+# Run CLI in development mode
+pnpm dev
 ```
+
+### Package Scripts
+
+```bash
+# Build all packages
+pnpm build
+
+# Run specific package commands
+pnpm --filter @form-shot/cli build
+pnpm --filter @form-shot/shared build
+
+# Run CLI directly
+pnpm cli analyze <URL> <TUPLE>
+```
+
+### Adding Dependencies
+
+```bash
+# Add to specific package
+pnpm --filter @form-shot/cli add commander
+
+# Add shared dependency
+pnpm --filter @form-shot/shared add puppeteer
+
+# Add dev dependency to root
+pnpm add -D -w typescript
+```
+
+### Project Structure
+
+- `packages/cli/` - CLI commands and entry point
+- `packages/shared/` - Core business logic:
+  - `form-analyzer/` - Form detection and analysis
+  - `test-generator/` - Test data generation
+  - `services/` - Firestore and screenshot services
+  - `types/` - TypeScript type definitions
+  - `utils/` - Common utilities
+- `packages/ui/` - Placeholder for future React UI
 
 
 en https://data.castoredc.com/survey/GTP6T36B

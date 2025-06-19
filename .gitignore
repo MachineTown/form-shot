@@ -4,3 +4,5 @@ output/
 *.log
 .env
 .DS_Store
+src/
+package.json.bak

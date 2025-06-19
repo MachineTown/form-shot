@@ -32,12 +32,28 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
+# Enable corepack for pnpm
+RUN corepack enable
+
 WORKDIR /app
 
-# Copy pre-built artifacts and dependencies
-COPY dist/ ./dist/
-COPY node_modules/ ./node_modules/
+# Copy pnpm lockfile and workspace configuration
+COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+COPY .npmrc ./
+
+# Copy all package.json files
 COPY package.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/ui/package.json ./packages/ui/
+
+# Install dependencies using pnpm
+RUN pnpm install --frozen-lockfile --production
+
+# Copy built artifacts
+COPY packages/shared/dist/ ./packages/shared/dist/
+COPY packages/cli/dist/ ./packages/cli/dist/
 
 # Copy Firestore service account key if it exists (optional)
 COPY firestore.jso[n] ./
@@ -48,9 +64,6 @@ RUN usermod -l appuser node && groupmod -n appuser node
 # Create output directory with proper permissions for the appuser
 RUN mkdir -p /app/output && chmod 777 /app/output && chown -R appuser:appuser /app/output
 
-# Set ownership of app directory
-# RUN chown -R appuser:appuser /app
-
 # Create necessary directories for Chrome
 RUN mkdir -p /home/appuser/.local/share/applications && \
     chown -R appuser:appuser /home/appuser
@@ -60,4 +73,4 @@ USER appuser
 ENV NODE_ENV=production
 ENV CHROME_DEVEL_SANDBOX=/usr/bin/google-chrome
 
-ENTRYPOINT ["node", "dist/index.js"]
+ENTRYPOINT ["node", "packages/cli/dist/index.js"]

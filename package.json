@@ -1,25 +1,22 @@
 {
-  "name": "form-shot",
+  "name": "form-shot-monorepo",
   "version": "1.0.0",
-  "description": "Automated survey form analysis tool",
-  "main": "dist/index.js",
+  "description": "Automated survey form analysis tool - monorepo root",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
-  },
-  "dependencies": {
-    "commander": "^11.0.0",
-    "dotenv": "^16.3.1",
-    "firebase-admin": "^12.0.0",
-    "puppeteer": "^24.10.1"
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "cli": "pnpm --filter @form-shot/cli start",
+    "dev": "pnpm --filter @form-shot/cli dev"
   },
   "devDependencies": {
-    "@types/node": "^20.5.0",
-    "ts-node": "^10.9.1",
     "typescript": "^5.1.6"
   },
   "engines": {
-    "node": ">=18.0.0"
-  }
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
 }

@@ -81,9 +81,22 @@ Use latest React
 - When identifying each question in the form, take a screenshot of that question which includes the frame and contents of that question.
 - When running through test-cases move focus away from the field after setting value, take a screenshot of the same div for that question as used in the analysis
 
+*** Monorepo Structure ***
+- Form-Shot is structured as a pnpm monorepo with packages in the packages/ directory
+- packages/cli/ contains the CLI application and commands
+- packages/shared/ contains shared business logic, services, and types
+- packages/ui/ is a placeholder for future React UI
+- Use pnpm for all package management and build tasks
+- Dependencies between packages use the workspace protocol (workspace:*)
+
 *** Build instructions ***
-use npm run build && docker build -f Dockerfile.runtime -t form-shot-runtime .
-After you make chaneges to the code, always rebuild the code and container
+use pnpm build && docker build -f Dockerfile.runtime -t form-shot-runtime .
+After you make changes to the code, always rebuild the code and container
+
+*** Docker Configuration ***
+- Only use Dockerfile.runtime for container builds (pnpm-based monorepo setup)
+- Only use docker-compose.runtime.yml for Docker Compose setup
+- Do not create additional Dockerfile or docker-compose.yml files
 
 *** Before commit ***
 - Ensure that the FIRESTORE.md is still accurate in light of any changes

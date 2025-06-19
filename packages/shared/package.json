@@ -1,0 +1,24 @@
+{
+  "name": "@form-shot/shared",
+  "version": "1.0.0",
+  "description": "Shared business logic for form-shot",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "firebase-admin": "^12.0.0",
+    "puppeteer": "^24.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.0",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@form-shot/cli",
+  "version": "1.0.0",
+  "description": "CLI application for form-shot",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "form-shot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@form-shot/shared": "workspace:*",
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

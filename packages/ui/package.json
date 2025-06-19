@@ -1,0 +1,17 @@
+{
+  "name": "@form-shot/ui",
+  "version": "1.0.0",
+  "description": "React UI for form-shot (placeholder)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'UI development not yet implemented'",
+    "build": "echo 'UI build not yet implemented'"
+  },
+  "dependencies": {
+    "@form-shot/shared": "workspace:*"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
