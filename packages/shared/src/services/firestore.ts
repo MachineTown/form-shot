@@ -183,11 +183,10 @@ export class FirestoreService {
             
             field.testData.testCases.forEach((testCase) => {
               const testCaseRef = testCasesCollection.doc(testCase.id);
-              const testCaseDoc = {
+              const testCaseDoc: any = {
                 id: testCase.id,
                 type: testCase.type,
                 value: testCase.value,
-                position: testCase.position,
                 description: testCase.description,
                 source: testCase.source,
                 provenance: testCase.provenance,
@@ -203,6 +202,11 @@ export class FirestoreService {
                 studyId: tuple.studyId,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
               };
+              
+              // Only add position if it's defined
+              if (testCase.position !== undefined) {
+                testCaseDoc.position = testCase.position;
+              }
               
               batch.set(testCaseRef, testCaseDoc);
             });
@@ -327,11 +331,10 @@ export class FirestoreService {
           
           field.testData.testCases.forEach((testCase) => {
             const testCaseRef = testCasesCollection.doc(testCase.id);
-            const testCaseDoc = {
+            const testCaseDoc: any = {
               id: testCase.id,
               type: testCase.type,
               value: testCase.value,
-              position: testCase.position,
               description: testCase.description,
               source: testCase.source,
               provenance: testCase.provenance,
@@ -345,6 +348,11 @@ export class FirestoreService {
               studyId: tuple.studyId,
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             };
+            
+            // Only add position if it's defined
+            if (testCase.position !== undefined) {
+              testCaseDoc.position = testCase.position;
+            }
             
             batch.set(testCaseRef, testCaseDoc);
           });
