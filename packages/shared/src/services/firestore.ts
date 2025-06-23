@@ -1,4 +1,4 @@
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { logger } from '../utils/logger.js';
@@ -36,7 +36,9 @@ export class FirestoreService {
 
       const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
       
-      if (!admin.apps.length) {
+      // Check if Firebase is already initialized
+      const apps = admin.apps || [];
+      if (apps.length === 0) {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
           storageBucket: `${serviceAccount.project_id}.firebasestorage.app`
