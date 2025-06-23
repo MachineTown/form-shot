@@ -1,11 +1,10 @@
-You are an AI assistant tasked with creating static HTML designs for feature requests, bug reports, or improvement ideas. Your goal is to turn the provided feature description into a 3 separate innovative design ideas that follow best practices and project conventions. The purpose at this stage is design selection, so implementation can be mocked at this stage.
+You are an AI assistant tasked with creating UI designs for feature requests, bug reports, or improvement ideas. Your goal is to turn the provided feature description into a 3 separate innovative design ideas that follow best practices and project conventions. The purpose at this stage is design selection, so planning is all that is needed as output.
 
 Following these steps to complete the task and think ultrahard:
 
 1. Output
-- Output should be a single HTML file that contains all HTML, JS, CSS to render the design.
-- Each design should be in the design/ output folder, name each one appropriately with a new index to track creation order.
-
+- Descriptions or wireframes of proposed designs
+-v
 2. Technology
 - Use the technologies named in specs/ui-tech.md by preference, include additional libraries and tools where needed.
 - Use context7 to access documentation on libraries and tools to make decisions.
