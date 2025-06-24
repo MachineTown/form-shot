@@ -226,13 +226,17 @@ const Sidebar: React.FC = () => {
     </Box>
   );
 
+  if (!sidebarOpen && !isMobile) {
+    return null;
+  }
+
   return (
     <Drawer
-      variant="temporary"
+      variant={isMobile ? 'temporary' : 'persistent'}
       open={sidebarOpen}
       onClose={handleDrawerClose}
       sx={{
-        width: sidebarOpen ? DRAWER_WIDTH : 0,
+        width: DRAWER_WIDTH,
         flexShrink: 0,
         '& .MuiDrawer-paper': {
           width: DRAWER_WIDTH,

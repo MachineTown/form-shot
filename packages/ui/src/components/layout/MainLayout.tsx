@@ -79,12 +79,17 @@ const MainLayout: React.FC = () => {
       <Box
         component="main"
         sx={{
-          flexGrow: 1,
-          p: 3,
-          pt: `calc(${APP_BAR_HEIGHT}px + 24px)`,
-          width: '100%',
-          height: '100vh',
+          position: 'absolute',
+          top: APP_BAR_HEIGHT,
+          left: !isMobile && sidebarOpen ? DRAWER_WIDTH : 0,
+          right: 0,
+          bottom: 0,
+          p: 2,
           overflow: 'auto',
+          transition: theme.transitions.create(['left'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         <Outlet />
