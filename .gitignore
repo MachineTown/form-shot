@@ -5,3 +5,7 @@ output/
 .env
 .DS_Store
 package.json.bak
+vite.config.*.timestamp*
+*.tsbuildinfo
+.pnpm-store
+.firebase

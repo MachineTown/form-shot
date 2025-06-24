@@ -1,15 +1,40 @@
 {
   "name": "@form-shot/ui",
   "version": "1.0.0",
-  "description": "React UI for form-shot (placeholder)",
+  "description": "React UI for form-shot",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "echo 'UI development not yet implemented'",
-    "build": "echo 'UI build not yet implemented'"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "deploy:prod": "pnpm build && firebase deploy --only hosting",
+    "deploy:preview": "pnpm build && firebase hosting:channel:deploy preview"
   },
   "dependencies": {
-    "@form-shot/shared": "workspace:*"
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@form-shot/shared": "workspace:*",
+    "@hookform/resolvers": "^3.3.4",
+    "@mui/icons-material": "^6.2.0",
+    "@mui/material": "^7.1.2",
+    "@reduxjs/toolkit": "^2.5.0",
+    "firebase": "^11.1.0",
+    "i18next": "^23.16.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.54.2",
+    "react-i18next": "^15.2.0",
+    "react-redux": "^9.2.0",
+    "react-router-dom": "^7.1.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
   },
   "engines": {
     "node": ">=18.0.0"

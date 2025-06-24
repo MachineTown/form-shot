@@ -517,7 +517,70 @@ pnpm add -D -w typescript
   - `services/` - Firestore and screenshot services
   - `types/` - TypeScript type definitions
   - `utils/` - Common utilities
-- `packages/ui/` - Placeholder for future React UI
+- `packages/ui/` - React web interface for viewing analysis results
+
+## Web UI
+
+Form-Shot includes a React-based web interface for viewing and managing survey analysis results.
+
+### UI Development
+
+```bash
+# Start development server (from root directory)
+pnpm ui:dev
+
+# Build production bundle
+pnpm ui:build
+
+# Preview production build locally
+pnpm --filter @form-shot/ui preview
+```
+
+### UI Deployment to Firebase Hosting
+
+The UI can be deployed to Firebase Hosting for web access.
+
+#### Prerequisites
+
+1. Firebase CLI installed: `npm install -g firebase-tools`
+2. Authenticated with Firebase: `firebase login`
+3. Firebase project already configured in `.firebaserc`
+
+#### Deploy to Production
+
+```bash
+# From root directory
+pnpm ui:deploy
+
+# Or from packages/ui directory
+cd packages/ui && pnpm deploy:prod
+```
+
+This will:
+1. Build the production bundle
+2. Deploy to Firebase Hosting at https://castor-form-shot.web.app
+
+#### Deploy Preview Channel
+
+For testing before production deployment:
+
+```bash
+# From root directory
+pnpm ui:deploy:preview
+
+# Or from packages/ui directory
+cd packages/ui && pnpm deploy:preview
+```
+
+This creates a preview channel URL for testing.
+
+### UI Features
+
+- **Analysis Explorer**: Browse and filter survey analyses by customer, study, and package
+- **Screenshot Viewer**: View form-level (on-entry/on-exit) and field-level screenshots
+- **Test Data Management**: Review and manage generated test cases
+- **Metadata Viewer**: Inspect detailed analysis metadata and field information
+- **Multi-panel Layout**: Efficient navigation with collapsible sidebar and tabbed content
 
 
 en https://data.castoredc.com/survey/GTP6T36B

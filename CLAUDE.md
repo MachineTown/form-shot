@@ -60,7 +60,7 @@
 
 *** Firestore ***
 - use a firestore service account JSON from ~/firestore.json for firestore-admin credentials
-- add an option to the tool to take the analysis.json and screenshots from the analysis step and upload into firestore, using the structures defined in FIRESTORE.md
+- add an option to the tool to take the analysis.json and screenshots from the analysis step and upload into firestore, using the structures defined in specs/FIRESTORE.md
 - test run results are automatically uploaded to Firestore and Cloud Storage
   - Test run documents stored in 'test-runs' collection with results as subcollection
   - Screenshots stored in Cloud Storage under 'test-runs/{analysisId}/{timestamp}'
@@ -99,7 +99,7 @@ After you make changes to the code, always rebuild the code and container
 - Do not create additional Dockerfile or docker-compose.yml files
 
 *** Before commit ***
-- Ensure that the FIRESTORE.md is still accurate in light of any changes
+- Ensure that the specs/FIRESTORE.md is still accurate in light of any changes
 - Ensure that README.md is still accurate in light of any changes
 
 *** Commands ***
