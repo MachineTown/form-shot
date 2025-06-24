@@ -10,14 +10,12 @@ import {
   DialogTitle,
   Typography,
   CircularProgress,
-  ImageList,
-  ImageListItem,
-  ImageListItemBar,
   useTheme,
   useMediaQuery,
   Tooltip,
   Stack,
 } from '@mui/material';
+import Carousel from 'react-material-ui-carousel';
 import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
@@ -97,7 +95,7 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
   }
 
   return (
-    <Box>
+    <Box sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
       {/* Form Tabs */}
       <Paper sx={{ mb: 2 }}>
         <Tabs
@@ -118,63 +116,75 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
 
       {/* Form Screenshots */}
       {selectedForm && (
-        <Box>
+        <Box sx={{ width: '100%', overflow: 'hidden' }}>
           {/* On-Entry/On-Exit Screenshots */}
-          <Stack direction={isMobile ? 'column' : 'row'} spacing={2} sx={{ mb: 3 }}>
-            {selectedForm.onEntryScreenshotUrl && (
-              <Paper
+          {(selectedForm.onEntryScreenshotUrl || selectedForm.onExitScreenshotUrl) && (
+            <Box sx={{ mb: 3 }}>
+              <Carousel
+                autoPlay={false}
+                cycleNavigation={false}
+                navButtonsAlwaysInvisible
+                indicators={true}
+                animation="slide"
+                swipe={true}
                 sx={{
-                  p: 1,
-                  flex: 1,
-                  cursor: 'pointer',
-                  '&:hover': { boxShadow: 3 },
+                  width: '100%',
+                  maxWidth: isMobile ? '100%' : '600px',
+                  mx: 'auto',
                 }}
-                onClick={() => handleImageClick(selectedForm.onEntryScreenshotUrl)}
               >
-                <Typography variant="subtitle2" gutterBottom>
-                  On-Entry Screenshot
-                </Typography>
-                <Box
-                  component="img"
-                  src={selectedForm.onEntryScreenshotUrl}
-                  alt="On-Entry"
-                  sx={{
-                    width: '100%',
-                    height: 200,
-                    objectFit: 'contain',
-                    bgcolor: 'grey.100',
-                  }}
-                />
-              </Paper>
-            )}
-            
-            {selectedForm.onExitScreenshotUrl && (
-              <Paper
-                sx={{
-                  p: 1,
-                  flex: 1,
-                  cursor: 'pointer',
-                  '&:hover': { boxShadow: 3 },
-                }}
-                onClick={() => handleImageClick(selectedForm.onExitScreenshotUrl)}
-              >
-                <Typography variant="subtitle2" gutterBottom>
-                  On-Exit Screenshot
-                </Typography>
-                <Box
-                  component="img"
-                  src={selectedForm.onExitScreenshotUrl}
-                  alt="On-Exit"
-                  sx={{
-                    width: '100%',
-                    height: 200,
-                    objectFit: 'contain',
-                    bgcolor: 'grey.100',
-                  }}
-                />
-              </Paper>
-            )}
-          </Stack>
+                {selectedForm.onEntryScreenshotUrl && (
+                  <Paper
+                    sx={{
+                      p: 2,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => handleImageClick(selectedForm.onEntryScreenshotUrl)}
+                  >
+                    <Typography variant="subtitle2" gutterBottom align="center">
+                      On-Entry Screenshot
+                    </Typography>
+                    <Box
+                      component="img"
+                      src={selectedForm.onEntryScreenshotUrl}
+                      alt="On-Entry"
+                      sx={{
+                        width: '100%',
+                        height: 400,
+                        objectFit: 'contain',
+                        bgcolor: 'grey.100',
+                      }}
+                    />
+                  </Paper>
+                )}
+                
+                {selectedForm.onExitScreenshotUrl && (
+                  <Paper
+                    sx={{
+                      p: 2,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => handleImageClick(selectedForm.onExitScreenshotUrl)}
+                  >
+                    <Typography variant="subtitle2" gutterBottom align="center">
+                      On-Exit Screenshot
+                    </Typography>
+                    <Box
+                      component="img"
+                      src={selectedForm.onExitScreenshotUrl}
+                      alt="On-Exit"
+                      sx={{
+                        width: '100%',
+                        height: 400,
+                        objectFit: 'contain',
+                        bgcolor: 'grey.100',
+                      }}
+                    />
+                  </Paper>
+                )}
+              </Carousel>
+            </Box>
+          )}
 
           {/* Field Screenshots */}
           <Typography variant="h6" gutterBottom>
@@ -186,48 +196,82 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
               <CircularProgress />
             </Box>
           ) : fields && fields.length > 0 ? (
-            <ImageList cols={isMobile ? 1 : 3} gap={16}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 1fr))',
+                },
+                gap: 2,
+                width: '100%',
+                maxWidth: '100%',
+                overflow: 'hidden',
+              }}
+            >
               {fields.map((field) => (
-                <ImageListItem
+                <Paper
                   key={field.id}
                   sx={{
+                    p: 1,
                     cursor: 'pointer',
-                    '& .MuiImageListItemBar-root': {
-                      background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 70%, rgba(0,0,0,0) 100%)',
+                    transition: 'all 0.2s',
+                    width: '100%',
+                    overflow: 'hidden',
+                    '&:hover': { 
+                      boxShadow: 3,
+                      transform: 'translateY(-2px)',
                     },
                   }}
                   onClick={() => handleImageClick(field.screenshotUrl)}
                 >
-                  <Box
-                    component="img"
-                    src={field.screenshotUrl}
-                    alt={field.questionText}
-                    loading="lazy"
-                    sx={{
-                      height: 250,
-                      objectFit: 'cover',
-                      bgcolor: 'grey.100',
-                    }}
-                  />
-                  <ImageListItemBar
-                    title={`${field.questionNumber} ${field.questionText}`}
-                    subtitle={field.inputType}
-                    actionIcon={
-                      <IconButton
-                        sx={{ color: 'rgba(255, 255, 255, 0.54)' }}
-                        aria-label={`download ${field.questionNumber}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownload(field.screenshotUrl, field.screenshotFilename);
-                        }}
-                      >
-                        <DownloadIcon />
-                      </IconButton>
-                    }
-                  />
-                </ImageListItem>
+                  <Stack spacing={1}>
+                    <Box sx={{ p: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle2" noWrap>
+                            {field.questionNumber} {field.questionText}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {field.inputType} {field.isRequired && '• Required'}
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(field.screenshotUrl, field.screenshotFilename);
+                          }}
+                          sx={{ ml: 1 }}
+                        >
+                          <DownloadIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                    <Box
+                      component="img"
+                      src={field.screenshotUrl}
+                      alt={field.questionText}
+                      loading="lazy"
+                      sx={{
+                        width: '100%',
+                        height: 300,
+                        objectFit: 'contain',
+                        bgcolor: 'grey.100',
+                        borderRadius: 1,
+                      }}
+                    />
+                    {field.choices && field.choices.length > 0 && (
+                      <Box sx={{ px: 1, pb: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {field.choices.length} choices
+                        </Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                </Paper>
               ))}
-            </ImageList>
+            </Box>
           ) : (
             <Box sx={{ textAlign: 'center', p: 4 }}>
               <Typography variant="body2" color="text.secondary">

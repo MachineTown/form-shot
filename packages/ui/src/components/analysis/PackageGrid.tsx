@@ -36,7 +36,8 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [languageFilter, setLanguageFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
+  const [studyFilter, setStudyFilter] = useState<string>(studyId || 'all');
+  const [sortBy, setSortBy] = useState<'date-asc' | 'date-desc' | 'name'>('date-asc');
 
   const { data: analyses, isLoading, error } = useGetAnalysesQuery({
     customerId,
@@ -53,11 +54,17 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
     analysesLength: analyses?.length
   });
 
-  // Extract unique languages for filter
+  // Extract unique languages and studies for filters
   const languages = useMemo(() => {
     if (!analyses) return [];
     const langs = new Set(analyses.map(a => a.language));
     return Array.from(langs).sort();
+  }, [analyses]);
+
+  const studies = useMemo(() => {
+    if (!analyses) return [];
+    const studySet = new Set(analyses.map(a => a.studyId));
+    return Array.from(studySet).sort();
   }, [analyses]);
 
   // Filter and sort analyses
@@ -66,21 +73,28 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
     
     // Create a shallow copy to avoid mutating the immutable array
     let filtered = [...analyses];
+    
+    // Apply language filter
     if (languageFilter !== 'all') {
       filtered = filtered.filter(a => a.language === languageFilter);
     }
+    
+    // Apply study filter
+    if (studyFilter !== 'all') {
+      filtered = filtered.filter(a => a.studyId === studyFilter);
+    }
 
     return filtered.sort((a, b) => {
-      if (sortBy === 'date') {
+      if (sortBy === 'date-asc' || sortBy === 'date-desc') {
         // Handle both Timestamp objects and already converted dates
         const dateA = a.analysisDate?.toMillis ? a.analysisDate.toMillis() : new Date(a.analysisDate as any).getTime();
         const dateB = b.analysisDate?.toMillis ? b.analysisDate.toMillis() : new Date(b.analysisDate as any).getTime();
-        return dateB - dateA;
+        return sortBy === 'date-asc' ? dateA - dateB : dateB - dateA;
       } else {
         return a.packageName.localeCompare(b.packageName);
       }
     });
-  }, [analyses, languageFilter, sortBy]);
+  }, [analyses, languageFilter, studyFilter, sortBy]);
 
   const handlePackageClick = (analysis: typeof filteredAnalyses[0]) => {
     dispatch(addToRecentlyViewed({
@@ -126,7 +140,27 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
   return (
     <Box>
       {/* Filters */}
-      <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+      <Stack 
+        direction={{ xs: 'column', sm: 'row' }} 
+        spacing={2} 
+        sx={{ mb: 3 }}
+      >
+        <TextField
+          select
+          size="small"
+          label="Study"
+          value={studyFilter}
+          onChange={(e) => setStudyFilter(e.target.value)}
+          sx={{ minWidth: 150 }}
+        >
+          <MenuItem value="all">All Studies</MenuItem>
+          {studies.map((study) => (
+            <MenuItem key={study} value={study}>
+              {study}
+            </MenuItem>
+          ))}
+        </TextField>
+
         <TextField
           select
           size="small"
@@ -148,10 +182,11 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
           size="small"
           label="Sort By"
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'date' | 'name')}
-          sx={{ minWidth: 120 }}
+          onChange={(e) => setSortBy(e.target.value as 'date-asc' | 'date-desc' | 'name')}
+          sx={{ minWidth: 150 }}
         >
-          <MenuItem value="date">Recent First</MenuItem>
+          <MenuItem value="date-asc">Oldest First</MenuItem>
+          <MenuItem value="date-desc">Newest First</MenuItem>
           <MenuItem value="name">Name (A-Z)</MenuItem>
         </TextField>
       </Stack>
@@ -268,7 +303,9 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
             No packages found
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {languageFilter !== 'all' ? 'Try changing the language filter' : 'No analyses available'}
+            {(languageFilter !== 'all' || studyFilter !== 'all') 
+              ? 'Try changing the filters' 
+              : 'No analyses available'}
           </Typography>
         </Box>
       )}
