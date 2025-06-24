@@ -43,7 +43,7 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
   const selectedForm = data?.forms[selectedFormIndex];
   
   const { data: fields, isLoading: fieldsLoading } = useGetFormFieldsQuery(
-    selectedForm ? { analysisId, formId: selectedForm.id } : undefined,
+    { analysisId, formId: selectedForm?.id || '' },
     { skip: !selectedForm }
   );
 
@@ -185,9 +185,9 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
               <CircularProgress />
             </Box>
-          ) : (
+          ) : fields && fields.length > 0 ? (
             <ImageList cols={isMobile ? 1 : 3} gap={16}>
-              {fields?.map((field) => (
+              {fields.map((field) => (
                 <ImageListItem
                   key={field.id}
                   sx={{
@@ -228,6 +228,12 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
                 </ImageListItem>
               ))}
             </ImageList>
+          ) : (
+            <Box sx={{ textAlign: 'center', p: 4 }}>
+              <Typography variant="body2" color="text.secondary">
+                No screenshots available
+              </Typography>
+            </Box>
           )}
         </Box>
       )}
@@ -241,7 +247,16 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
         PaperProps={{
           sx: {
             bgcolor: 'background.default',
-            m: 2,
+            position: 'fixed',
+            margin: 0,
+            top: '8px',
+            left: '8px',
+            right: '8px',
+            bottom: '8px',
+            width: 'calc(100vw - 16px)',
+            height: 'calc(100vh - 16px)',
+            maxWidth: 'calc(100vw - 16px)',
+            maxHeight: 'calc(100vh - 16px)',
           },
         }}
       >
@@ -267,15 +282,16 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
             </Box>
           </Box>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, overflow: 'auto' }}>
+        <DialogContent dividers sx={{ p: 1, overflow: 'auto', height: 'calc(100% - 64px)' }}>
           {selectedImage && (
             <Box
               sx={{
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
-                minHeight: '60vh',
-                p: 2,
+                width: '100%',
+                height: '100%',
+                p: 1,
               }}
             >
               <Box
@@ -284,7 +300,8 @@ const ScreenshotViewer: React.FC<ScreenshotViewerProps> = ({ analysisId }) => {
                 alt="Full screen view"
                 sx={{
                   maxWidth: '100%',
-                  maxHeight: '80vh',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
                   transform: `scale(${imageZoom})`,
                   transition: 'transform 0.3s',
                   transformOrigin: 'center',

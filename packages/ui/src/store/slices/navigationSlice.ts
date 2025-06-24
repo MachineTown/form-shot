@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-interface NavigationState {
+export interface NavigationState {
   selectedCustomer: string | null;
   selectedStudy: string | null;
   selectedPackage: string | null;

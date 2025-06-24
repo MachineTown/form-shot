@@ -38,7 +38,7 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {/* App Bar */}
       <AppBar
         position="fixed"
@@ -81,12 +81,10 @@ const MainLayout: React.FC = () => {
         sx={{
           flexGrow: 1,
           p: 3,
-          mt: `${APP_BAR_HEIGHT}px`,
-          ml: !isMobile && sidebarOpen ? `${DRAWER_WIDTH}px` : 0,
-          transition: theme.transitions.create(['margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
+          pt: `calc(${APP_BAR_HEIGHT}px + 24px)`,
+          width: '100%',
+          height: '100vh',
+          overflow: 'auto',
         }}
       >
         <Outlet />
