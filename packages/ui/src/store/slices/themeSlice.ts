@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 type ThemeMode = 'light' | 'dark';
 
-interface ThemeState {
+export interface ThemeState {
   mode: ThemeMode;
 }
 
