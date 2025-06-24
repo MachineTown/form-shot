@@ -647,6 +647,57 @@ export class FirestoreService {
     }
   }
 
+  async getENBaselineAnalysis(customerId: string, studyId: string, packageName: string): Promise<any> {
+    if (!this.initialized) {
+      throw new Error('Firestore service not initialized');
+    }
+
+    try {
+      // Query for EN language analysis with matching customer, study, and package
+      const query = this.db.collection('survey-analyses')
+        .where('customerId', '==', customerId)
+        .where('studyId', '==', studyId)
+        .where('packageName', '==', packageName)
+        .where('language', '==', 'en')
+        .orderBy('analysisDate', 'desc')
+        .limit(1);
+
+      const snapshot = await query.get();
+      
+      if (snapshot.empty) {
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      const analysisData = { id: doc.id, ...doc.data() };
+
+      // Get all forms
+      const formsSnapshot = await doc.ref.collection('forms').orderBy('order').get();
+      const forms = [];
+
+      for (const formDoc of formsSnapshot.docs) {
+        const formData: any = { id: formDoc.id, ...formDoc.data() };
+
+        // Get all fields for this form
+        const fieldsSnapshot = await formDoc.ref.collection('fields').orderBy('order').get();
+        const fields = fieldsSnapshot.docs.map(fieldDoc => ({
+          id: fieldDoc.id,
+          ...fieldDoc.data()
+        }));
+
+        formData.fields = fields;
+        forms.push(formData);
+      }
+
+      (analysisData as any).forms = forms;
+      return analysisData;
+
+    } catch (error) {
+      logger.error('Failed to get EN baseline analysis:', error);
+      throw error;
+    }
+  }
+
   async queryTestCases(filters: {
     analysisId?: string;
     customerId?: string;

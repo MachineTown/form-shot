@@ -17,6 +17,7 @@ An automated survey form analysis tool that captures form fields, screenshots, a
 - **Test Case Management**: Update status, track reviews, and generate statistics
 - **Automated Test Execution**: Execute test cases on live forms with validation detection
 - **Validation Testing**: Capture form validation states and error messages
+- **Multi-language Support**: Analyze non-EN surveys using EN baseline navigation
 - **Containerized**: Runs completely within Docker with no local dependencies
 
 ## Prerequisites
@@ -77,6 +78,36 @@ docker run --rm -v ./output:/app/output form-shot-runtime analyze <URL> <TUPLE>
 Example:
 ```bash
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+```
+
+Options:
+- `--nav-delay <seconds>`: Pause in seconds before clicking navigation buttons (default: 3)
+- `--en-baseline <path>`: Path to EN analysis.json file to use as baseline for non-EN analysis
+
+#### Multi-language Support
+
+Form-Shot supports analyzing surveys in multiple languages using an EN baseline approach:
+
+1. **EN-first requirement**: Before analyzing non-EN versions, you must have an EN analysis
+2. **Baseline navigation**: Non-EN analyses use the EN form structure to navigate
+3. **Language-specific screenshots**: Captures screenshots with localized text
+
+##### Automatic EN baseline lookup (via Firestore):
+```bash
+# First, analyze the EN version
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime analyze https://survey.example.com/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+
+# Upload EN analysis to Firestore
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
+
+# Now analyze DE version (will automatically find EN baseline in Firestore)
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime analyze https://survey.example.com/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,de,v1
+```
+
+##### Manual EN baseline (without Firestore):
+```bash
+# Analyze DE version using local EN analysis file
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://survey.example.com/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,de,v1 --en-baseline /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 ```
 
 ### 2. Upload Analysis to Firestore (includes test data)

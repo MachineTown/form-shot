@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { 
   PuppeteerManager,
@@ -6,18 +6,83 @@ import {
   SurveyFormDetector,
   FormResetService,
   ScreenshotService,
+  BaselineNavigator,
+  FirestoreService,
   logger,
   Survey,
   SurveyForm,
   SurveyTuple
 } from '@form-shot/shared';
 
-export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: number = 3000): Promise<void> {
+export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: number = 3000, enBaselinePath?: string): Promise<void> {
   const puppeteerManager = new PuppeteerManager();
   const formDetector = new SurveyFormDetector();
   const formNavigator = new FormNavigator();
   const formResetService = new FormResetService();
   const screenshotService = new ScreenshotService();
+  const baselineNavigator = new BaselineNavigator();
+  
+  let baselineForms: SurveyForm[] | null = null;
+  
+  // Check if this is a non-EN analysis that requires baseline
+  if (tuple.language.toLowerCase() !== 'en') {
+    logger.info(`Non-EN language detected (${tuple.language}), checking for EN baseline...`);
+    
+    if (enBaselinePath) {
+      // Use provided EN baseline file
+      logger.info(`Loading EN baseline from: ${enBaselinePath}`);
+      
+      if (!existsSync(enBaselinePath)) {
+        throw new Error(`EN baseline file not found: ${enBaselinePath}`);
+      }
+      
+      try {
+        const baselineData = JSON.parse(readFileSync(enBaselinePath, 'utf8'));
+        
+        // Validate that it's an EN analysis
+        if (baselineData.metadata?.tuple?.language?.toLowerCase() !== 'en') {
+          throw new Error(`Baseline file is not an EN analysis (found language: ${baselineData.metadata?.tuple?.language})`);
+        }
+        
+        // Validate tuple matches (except language and version)
+        const baselineTuple = baselineData.metadata.tuple;
+        if (baselineTuple.customerId !== tuple.customerId ||
+            baselineTuple.studyId !== tuple.studyId ||
+            baselineTuple.packageName !== tuple.packageName) {
+          throw new Error(`Baseline tuple mismatch - Expected: ${tuple.customerId}/${tuple.studyId}/${tuple.packageName}, Found: ${baselineTuple.customerId}/${baselineTuple.studyId}/${baselineTuple.packageName}`);
+        }
+        
+        baselineForms = baselineData.forms;
+        logger.info(`Loaded EN baseline with ${baselineForms?.length || 0} forms`);
+      } catch (error) {
+        throw new Error(`Failed to load EN baseline: ${error}`);
+      }
+    } else {
+      // Query Firestore for EN baseline
+      logger.info('Querying Firestore for EN baseline...');
+      
+      try {
+        const firestoreService = new FirestoreService();
+        const baselineAnalysis = await firestoreService.getENBaselineAnalysis(
+          tuple.customerId,
+          tuple.studyId,
+          tuple.packageName
+        );
+        
+        if (!baselineAnalysis) {
+          throw new Error(`No EN baseline found in Firestore for ${tuple.customerId}/${tuple.studyId}/${tuple.packageName}. Please analyze the EN version first or provide an EN baseline file using --en-baseline.`);
+        }
+        
+        baselineForms = baselineAnalysis.forms;
+        logger.info(`Found EN baseline in Firestore with ${baselineForms?.length || 0} forms`);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Service account key not found')) {
+          throw new Error('Firestore service account not configured. Please provide an EN baseline file using --en-baseline or configure Firestore credentials.');
+        }
+        throw error;
+      }
+    }
+  }
   
   try {
     logger.info('Launching browser...');
@@ -43,7 +108,67 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
     let formIndex = 0;
     let isLastForm = false;
     
-    while (!isLastForm) {
+    // Use baseline navigation if available for non-EN languages
+    if (baselineForms && baselineForms.length > 0) {
+      logger.info('Using baseline-driven navigation for non-EN analysis');
+      
+      // Process each form using baseline data
+      for (let baselineIndex = 0; baselineIndex < baselineForms.length; baselineIndex++) {
+        const baselineForm = baselineForms[baselineIndex];
+        logger.info(`Analyzing form ${baselineIndex + 1}/${baselineForms.length} using baseline...`);
+        
+        // Clear any existing values from the form before analysis
+        logger.info('Clearing any existing field values...');
+        await formResetService.clearFormValues(puppeteerManager.getPage());
+        
+        // Take on-entry screenshot after clearing values
+        const onEntryScreenshot = await screenshotService.takeOnEntryScreenshot(puppeteerManager.getPage(), {} as SurveyForm, baselineIndex, tuple);
+        
+        // Detect current form (will capture language-specific text)
+        const form = await formDetector.detectSurveyForm(puppeteerManager.getPage(), tuple, screenshotService, baselineIndex);
+        
+        // Detect navigation buttons
+        const navButtons = await formNavigator.detectNavigationButtons(puppeteerManager.getPage());
+        form.navigationButtons = navButtons;
+        form.formIndex = baselineIndex;
+        
+        // Set screenshot paths
+        if (onEntryScreenshot) {
+          form.onEntryScreenshot = onEntryScreenshot;
+        }
+        
+        logger.info(`Found form ${baselineIndex + 1}: "${form.longTitle}" with ${form.fields.length} fields`);
+        logger.info(`Navigation buttons: ${navButtons.map(b => b.type).join(', ')}`);
+        
+        forms.push(form);
+        
+        // Check if this is the last form
+        isLastForm = navButtons.some(b => b.type === 'finish') || baselineIndex === baselineForms.length - 1;
+        
+        if (!isLastForm) {
+          // Use baseline navigator to fill fields and navigate
+          const navigationResult = await baselineNavigator.navigateWithBaseline(
+            puppeteerManager.getPage(),
+            [baselineForm], // Pass current form only
+            navDelay
+          );
+          
+          if (!navigationResult.isComplete) {
+            logger.error('Baseline navigation failed at form', baselineIndex + 1);
+            break;
+          }
+          
+          // Take on-exit screenshot before moving to next form
+          logger.info('Taking on-exit screenshot before navigation...');
+          const onExitScreenshot = await screenshotService.takeOnExitScreenshot(puppeteerManager.getPage(), form, baselineIndex, tuple);
+          if (onExitScreenshot) {
+            form.onExitScreenshot = onExitScreenshot;
+          }
+        }
+      }
+    } else {
+      // Original analysis logic for EN or when no baseline is available
+      while (!isLastForm) {
       logger.info(`Analyzing form ${formIndex + 1}...`);
       
       // Clear any existing values from the form before analysis (skip for cover/intro forms)
@@ -208,6 +333,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
         }
       }
     }
+    } // End of else block for non-baseline analysis
     
     logger.info(`Analysis completed. Found ${forms.length} forms`);
     

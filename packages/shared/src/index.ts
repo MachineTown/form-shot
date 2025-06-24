@@ -8,6 +8,7 @@ export * from './utils/logger.js';
 export * from './form-analyzer/form-navigator.js';
 export * from './form-analyzer/form-reset-service.js';
 export * from './form-analyzer/survey-detector.js';
+export * from './form-analyzer/baseline-navigator.js';
 
 // Export test generator
 export * from './test-generator/field-type-registry.js';
