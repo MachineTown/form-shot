@@ -20,7 +20,6 @@ import {
   Schedule as ScheduleIcon,
   Description as DescriptionIcon,
   Preview as PreviewIcon,
-  Check as CheckIcon,
 } from '@mui/icons-material';
 import { useGetAnalysesQuery } from '../../store/services/firestoreApi';
 import { useAppDispatch } from '../../hooks/redux';
@@ -207,6 +206,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                 cursor: 'pointer',
                 transition: 'all 0.3s',
                 overflow: 'hidden',
+                bgcolor: 'grey.100',
                 '&:hover': {
                   transform: 'translateY(-4px)',
                   boxShadow: 4,
@@ -221,27 +221,13 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                   px: 1.5,
                   py: 0.75,
                   display: 'flex',
-                  justifyContent: 'space-between',
+                  justifyContent: 'flex-end',
                   alignItems: 'center',
                   borderBottom: 1,
                   borderColor: 'divider',
                 }}
               >
-                {/* Test data chip on the left */}
-                <Box>
-                  {analysis.hasTestData ? (
-                    <Chip
-                      label="Test Data"
-                      size="small"
-                      color="success"
-                      icon={<CheckIcon />}
-                    />
-                  ) : (
-                    <Box /> // Empty box to maintain layout
-                  )}
-                </Box>
-                
-                {/* Language and version chips on the right */}
+                {/* Language and version chips */}
                 <Box
                   sx={{
                     display: 'flex',
@@ -284,6 +270,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
+                      objectPosition: 'top',
                     }}
                   />
                 ) : (
@@ -291,26 +278,29 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                 )}
               </CardMedia>
 
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography gutterBottom variant="h6" component="div">
-                  {analysis.packageName}
-                </Typography>
-                
-                <Typography variant="body2" color="text.secondary">
-                  {analysis.longTitle || analysis.shortName}
-                </Typography>
+              <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ flexGrow: 1 }}>
+                  <Typography gutterBottom variant="h6" component="div">
+                    {analysis.packageName}
+                  </Typography>
+                  
+                  <Typography variant="body2" color="text.secondary">
+                    {analysis.longTitle || analysis.shortName}
+                  </Typography>
+                </Box>
 
-                <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                {/* Bottom row with field count and date */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <DescriptionIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
-                    <Typography variant="caption">
+                    <Typography variant="caption" color="text.secondary">
                       {analysis.fieldsCount} fields
                     </Typography>
                   </Box>
                   
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <ScheduleIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
-                    <Typography variant="caption">
+                    <Typography variant="caption" color="text.secondary">
                       {analysis.analysisDate?.toDate 
                         ? new Date(analysis.analysisDate.toDate()).toLocaleDateString()
                         : new Date(analysis.analysisDate as any).toLocaleDateString()}
