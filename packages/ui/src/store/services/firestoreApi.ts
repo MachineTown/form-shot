@@ -13,6 +13,36 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 
+// Helper to handle Firestore Timestamp serialization
+const convertTimestamps = (data: any): any => {
+  if (!data) return data;
+  
+  if (data instanceof Timestamp) {
+    return data;
+  }
+  
+  if (Array.isArray(data)) {
+    return data.map(convertTimestamps);
+  }
+  
+  if (typeof data === 'object') {
+    const converted: any = {};
+    for (const key in data) {
+      if (data[key] instanceof Timestamp) {
+        converted[key] = data[key];
+      } else if (data[key]?.seconds !== undefined && data[key]?.nanoseconds !== undefined) {
+        // Handle serialized timestamp objects
+        converted[key] = new Timestamp(data[key].seconds, data[key].nanoseconds);
+      } else {
+        converted[key] = convertTimestamps(data[key]);
+      }
+    }
+    return converted;
+  }
+  
+  return data;
+};
+
 export interface Customer {
   customerId: string;
   name: string;
@@ -97,8 +127,10 @@ export const firestoreApi = createApi({
         try {
           const querySnapshot = await getDocs(collection(db, 'customers'));
           const customers: Customer[] = [];
-          querySnapshot.forEach((doc) => {
-            customers.push({ ...doc.data() as Customer });
+          querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const convertedData = convertTimestamps(data);
+            customers.push({ ...convertedData as Customer });
           });
           return { data: customers };
         } catch (error) {
@@ -135,8 +167,10 @@ export const firestoreApi = createApi({
           
           const querySnapshot = await getDocs(q);
           const analyses: SurveyAnalysis[] = [];
-          querySnapshot.forEach((doc) => {
-            analyses.push({ id: doc.id, ...doc.data() } as SurveyAnalysis);
+          querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const convertedData = convertTimestamps(data);
+            analyses.push({ id: docSnap.id, ...convertedData } as SurveyAnalysis);
           });
           
           console.log('Firestore getAnalyses query result:', {
@@ -146,7 +180,8 @@ export const firestoreApi = createApi({
               id: a.id,
               customerId: a.customerId,
               studyId: a.studyId,
-              packageName: a.packageName
+              packageName: a.packageName,
+              analysisDate: a.analysisDate
             }))
           });
           
@@ -168,7 +203,8 @@ export const firestoreApi = createApi({
             throw new Error('Analysis not found');
           }
           
-          const analysis = { id: analysisDoc.id, ...analysisDoc.data() } as SurveyAnalysis;
+          const analysisData = analysisDoc.data();
+          const analysis = { id: analysisDoc.id, ...convertTimestamps(analysisData) } as SurveyAnalysis;
           
           // Get forms subcollection
           const formsQuery = query(
@@ -177,8 +213,9 @@ export const firestoreApi = createApi({
           );
           const formsSnapshot = await getDocs(formsQuery);
           const forms: SurveyForm[] = [];
-          formsSnapshot.forEach((doc) => {
-            forms.push({ id: doc.id, ...doc.data() } as SurveyForm);
+          formsSnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            forms.push({ id: docSnap.id, ...convertTimestamps(data) } as SurveyForm);
           });
           
           return { data: { analysis, forms } };
@@ -199,8 +236,9 @@ export const firestoreApi = createApi({
           );
           const fieldsSnapshot = await getDocs(fieldsQuery);
           const fields: SurveyField[] = [];
-          fieldsSnapshot.forEach((doc) => {
-            fields.push({ id: doc.id, ...doc.data() } as SurveyField);
+          fieldsSnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            fields.push({ id: docSnap.id, ...convertTimestamps(data) } as SurveyField);
           });
           
           return { data: fields };

@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:prod": "pnpm build && firebase deploy --only hosting",
+    "deploy:preview": "pnpm build && firebase hosting:channel:deploy preview"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

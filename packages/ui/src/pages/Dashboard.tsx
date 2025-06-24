@@ -35,7 +35,7 @@ const Dashboard: React.FC = () => {
       
       <Grid container spacing={3}>
         {/* Stats Cards */}
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -51,7 +51,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -67,7 +67,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -83,7 +83,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -100,13 +100,13 @@ const Dashboard: React.FC = () => {
         </Grid>
 
         {/* Recent Analyses */}
-        <Grid item xs={12}>
+        <Grid size={12}>
           <Typography variant="h5" gutterBottom sx={{ mt: 2 }}>
             Recent Analyses
           </Typography>
           <Grid container spacing={2}>
             {analyses?.slice(0, 6).map((analysis) => (
-              <Grid item xs={12} sm={6} md={4} key={analysis.id}>
+              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={analysis.id}>
                 <Card>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>
@@ -128,7 +128,9 @@ const Dashboard: React.FC = () => {
                       />
                     </Box>
                     <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                      {analysis.fieldsCount} fields • {new Date(analysis.analysisDate.toDate()).toLocaleDateString()}
+                      {analysis.fieldsCount} fields • {analysis.analysisDate?.toDate 
+                        ? new Date(analysis.analysisDate.toDate()).toLocaleDateString()
+                        : new Date(analysis.analysisDate as any).toLocaleDateString()}
                     </Typography>
                   </CardContent>
                   <CardActions>

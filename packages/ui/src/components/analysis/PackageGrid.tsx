@@ -64,14 +64,18 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
   const filteredAnalyses = useMemo(() => {
     if (!analyses) return [];
     
-    let filtered = analyses;
+    // Create a shallow copy to avoid mutating the immutable array
+    let filtered = [...analyses];
     if (languageFilter !== 'all') {
       filtered = filtered.filter(a => a.language === languageFilter);
     }
 
     return filtered.sort((a, b) => {
       if (sortBy === 'date') {
-        return b.analysisDate.toMillis() - a.analysisDate.toMillis();
+        // Handle both Timestamp objects and already converted dates
+        const dateA = a.analysisDate?.toMillis ? a.analysisDate.toMillis() : new Date(a.analysisDate as any).getTime();
+        const dateB = b.analysisDate?.toMillis ? b.analysisDate.toMillis() : new Date(b.analysisDate as any).getTime();
+        return dateB - dateA;
       } else {
         return a.packageName.localeCompare(b.packageName);
       }
@@ -103,6 +107,19 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
           </Grid>
         ))}
       </Grid>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Typography variant="h6" color="error" gutterBottom>
+          Error loading analyses
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {error.toString()}
+        </Typography>
+      </Box>
     );
   }
 
@@ -213,7 +230,9 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <ScheduleIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
                     <Typography variant="caption">
-                      {new Date(analysis.analysisDate.toDate()).toLocaleDateString()}
+                      {analysis.analysisDate?.toDate 
+                        ? new Date(analysis.analysisDate.toDate()).toLocaleDateString()
+                        : new Date(analysis.analysisDate as any).toLocaleDateString()}
                     </Typography>
                   </Box>
                 </Box>

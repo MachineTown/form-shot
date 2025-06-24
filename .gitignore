@@ -7,3 +7,5 @@ output/
 package.json.bak
 vite.config.*.timestamp*
 *.tsbuildinfo
+.pnpm-store
+.firebase
