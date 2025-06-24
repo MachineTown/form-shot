@@ -69,6 +69,7 @@ export interface SurveyAnalysis {
   hasTestData: boolean;
   testDataSummary?: any;
   screenshotsPath: string;
+  firstFormOnEntryScreenshotUrl?: string;
   status: string;
   processingDuration: number;
   createdAt: Timestamp;

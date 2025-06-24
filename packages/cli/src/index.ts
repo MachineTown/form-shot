@@ -12,6 +12,7 @@ import {
 } from './commands/test-data.js';
 import { runTests } from './commands/test-run.js';
 import { fixAnalysis } from './commands/fix-analysis.js';
+import { fixScreenshots } from './commands/fix-screenshots.js';
 import { SurveyTuple, logger } from '@form-shot/shared';
 
 const program = new Command();
@@ -195,6 +196,18 @@ program
       await fixAnalysis();
     } catch (error) {
       logger.error('Fix analysis failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('fix-screenshots')
+  .description('Fix existing analyses to add first form screenshot URLs')
+  .action(async () => {
+    try {
+      await fixScreenshots();
+    } catch (error) {
+      logger.error('Fix screenshots failed:', error);
       process.exit(1);
     }
   });

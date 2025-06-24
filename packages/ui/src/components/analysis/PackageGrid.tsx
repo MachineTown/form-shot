@@ -1,13 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Grid,
   Card,
   CardContent,
-  CardActions,
   CardMedia,
   Typography,
-  Button,
   Chip,
   Box,
   Skeleton,
@@ -22,6 +20,7 @@ import {
   Schedule as ScheduleIcon,
   Description as DescriptionIcon,
   Preview as PreviewIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 import { useGetAnalysesQuery } from '../../store/services/firestoreApi';
 import { useAppDispatch } from '../../hooks/redux';
@@ -43,6 +42,11 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
     customerId,
     studyId,
   });
+
+  // Update study filter when studyId prop changes
+  useEffect(() => {
+    setStudyFilter(studyId || 'all');
+  }, [studyId]);
 
   // Debug logging
   console.log('PackageGrid debug:', {
@@ -202,6 +206,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                 flexDirection: 'column',
                 cursor: 'pointer',
                 transition: 'all 0.3s',
+                overflow: 'hidden',
                 '&:hover': {
                   transform: 'translateY(-4px)',
                   boxShadow: 4,
@@ -209,24 +214,36 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
               }}
               onClick={() => handlePackageClick(analysis)}
             >
-              {/* Screenshot Preview */}
-              <CardMedia
-                component="div"
+              {/* Top bar with chips */}
+              <Box
                 sx={{
-                  height: 140,
-                  bgcolor: 'grey.200',
+                  bgcolor: 'grey.100',
+                  px: 1.5,
+                  py: 0.75,
                   display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
+                  borderBottom: 1,
+                  borderColor: 'divider',
                 }}
               >
-                <PreviewIcon sx={{ fontSize: 48, color: 'grey.400' }} />
+                {/* Test data chip on the left */}
+                <Box>
+                  {analysis.hasTestData ? (
+                    <Chip
+                      label="Test Data"
+                      size="small"
+                      color="success"
+                      icon={<CheckIcon />}
+                    />
+                  ) : (
+                    <Box /> // Empty box to maintain layout
+                  )}
+                </Box>
+                
+                {/* Language and version chips on the right */}
                 <Box
                   sx={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
                     display: 'flex',
                     gap: 0.5,
                   }}
@@ -243,6 +260,35 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                     variant="outlined"
                   />
                 </Box>
+              </Box>
+
+              {/* Screenshot Preview */}
+              <CardMedia
+                component="div"
+                sx={{
+                  height: 140,
+                  bgcolor: 'grey.200',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                {analysis.firstFormOnEntryScreenshotUrl ? (
+                  <Box
+                    component="img"
+                    src={analysis.firstFormOnEntryScreenshotUrl}
+                    alt={`${analysis.packageName} preview`}
+                    sx={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                  />
+                ) : (
+                  <PreviewIcon sx={{ fontSize: 48, color: 'grey.400' }} />
+                )}
               </CardMedia>
 
               <CardContent sx={{ flexGrow: 1 }}>
@@ -271,22 +317,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                     </Typography>
                   </Box>
                 </Box>
-
-                {analysis.hasTestData && (
-                  <Chip
-                    label="Test Data Available"
-                    size="small"
-                    color="success"
-                    sx={{ mt: 1 }}
-                  />
-                )}
               </CardContent>
-
-              <CardActions>
-                <Button size="small" fullWidth>
-                  View Details
-                </Button>
-              </CardActions>
             </Card>
           </Grid>
         ))}

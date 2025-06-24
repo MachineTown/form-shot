@@ -107,6 +107,9 @@ export class FirestoreService {
         viewportHeight: firstForm?.viewportHeight || 0,
         timestamp: firstForm ? admin.firestore.Timestamp.fromDate(new Date(firstForm.timestamp)) : admin.firestore.FieldValue.serverTimestamp(),
         
+        // First form screenshot for preview
+        firstFormOnEntryScreenshotUrl: firstForm?.onEntryScreenshot ? uploadedScreenshots[firstForm.onEntryScreenshot] || '' : '',
+        
         // Summary data from all forms
         fieldsCount: forms.reduce((sum, form) => sum + form.fields.length, 0),
         totalFields: forms.reduce((sum, form) => sum + form.fields.length, 0),
