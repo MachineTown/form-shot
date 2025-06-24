@@ -11,6 +11,7 @@ import {
   updateTestCaseStatus
 } from './commands/test-data.js';
 import { runTests } from './commands/test-run.js';
+import { fixAnalysis } from './commands/fix-analysis.js';
 import { SurveyTuple, logger } from '@form-shot/shared';
 
 const program = new Command();
@@ -182,6 +183,18 @@ program
       await runTests(testRunOptions);
     } catch (error) {
       logger.error('Test run failed:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('fix-analysis')
+  .description('Fix existing analysis to add missing fields')
+  .action(async () => {
+    try {
+      await fixAnalysis();
+    } catch (error) {
+      logger.error('Fix analysis failed:', error);
       process.exit(1);
     }
   });

@@ -38,9 +38,19 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
   const [languageFilter, setLanguageFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
 
-  const { data: analyses, isLoading } = useGetAnalysesQuery({
+  const { data: analyses, isLoading, error } = useGetAnalysesQuery({
     customerId,
     studyId,
+  });
+
+  // Debug logging
+  console.log('PackageGrid debug:', {
+    customerId,
+    studyId,
+    analyses,
+    isLoading,
+    error,
+    analysesLength: analyses?.length
   });
 
   // Extract unique languages for filter
@@ -82,7 +92,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
     return (
       <Grid container spacing={3}>
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <Grid item xs={12} sm={6} md={4} key={i}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
             <Card>
               <Skeleton variant="rectangular" height={140} />
               <CardContent>
@@ -132,7 +142,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
       {/* Package Grid */}
       <Grid container spacing={3}>
         {filteredAnalyses.map((analysis) => (
-          <Grid item xs={12} sm={6} md={4} key={analysis.id}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={analysis.id}>
             <Card
               sx={{
                 height: '100%',

@@ -78,7 +78,7 @@ export interface SurveyForm {
   onExitScreenshotUrl: string;
 }
 
-interface QueryParams {
+export interface QueryParams {
   customerId?: string;
   studyId?: string;
   packageName?: string;
@@ -137,6 +137,17 @@ export const firestoreApi = createApi({
           const analyses: SurveyAnalysis[] = [];
           querySnapshot.forEach((doc) => {
             analyses.push({ id: doc.id, ...doc.data() } as SurveyAnalysis);
+          });
+          
+          console.log('Firestore getAnalyses query result:', {
+            params,
+            analysesCount: analyses.length,
+            analyses: analyses.map(a => ({
+              id: a.id,
+              customerId: a.customerId,
+              studyId: a.studyId,
+              packageName: a.packageName
+            }))
           });
           
           return { data: analyses };

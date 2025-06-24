@@ -75,10 +75,18 @@ export class FirestoreService {
       const uploadedScreenshots: Record<string, string> = {};
       
       for (const form of forms) {
+        // Upload field screenshots
         const formScreenshots = await this.uploadScreenshots(form.fields, screenshotsDir, screenshotsPath);
         Object.assign(uploadedScreenshots, formScreenshots);
+        
+        // Upload form-level screenshots (on-entry and on-exit)
+        const formLevelScreenshots = await this.uploadFormLevelScreenshots(form, screenshotsDir, screenshotsPath);
+        Object.assign(uploadedScreenshots, formLevelScreenshots);
       }
 
+      // Get the first form's title information for the analysis level
+      const firstForm = forms[0];
+      
       // Prepare main document data
       const surveyDoc = {
         // Tuple fields
@@ -93,15 +101,24 @@ export class FirestoreService {
         url: metadata.url,
         totalForms: metadata.totalForms,
         
+        // Form metadata from first form (for UI compatibility)
+        longTitle: firstForm?.longTitle || '',
+        shortName: firstForm?.shortName || '',
+        viewportHeight: firstForm?.viewportHeight || 0,
+        timestamp: firstForm ? admin.firestore.Timestamp.fromDate(new Date(firstForm.timestamp)) : admin.firestore.FieldValue.serverTimestamp(),
+        
         // Summary data from all forms
+        fieldsCount: forms.reduce((sum, form) => sum + form.fields.length, 0),
         totalFields: forms.reduce((sum, form) => sum + form.fields.length, 0),
         hasTestData: forms.some(form => form.fields.some(field => field.testData)),
+        testDataSummary: this.calculateTestDataSummary(forms.flatMap(f => f.fields)),
         
         // Cloud Storage references
         screenshotsPath: screenshotsPath,
         
         // Status and tracking
         status: 'completed',
+        processingDuration: 0,
         
         // Audit fields
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -374,6 +391,75 @@ export class FirestoreService {
       logger.error('Failed to upload analysis to Firestore:', error);
       throw error;
     }
+  }
+
+  private async uploadFormLevelScreenshots(form: SurveyForm, screenshotsDir: string, basePath: string): Promise<Record<string, string>> {
+    const uploadedScreenshots: Record<string, string> = {};
+    const bucket = this.storage.bucket();
+
+    logger.info(`Uploading form-level screenshots for form: ${form.shortName}`);
+
+    // Upload on-entry screenshot
+    if (form.onEntryScreenshot) {
+      try {
+        const localPath = join(screenshotsDir, form.onEntryScreenshot);
+        if (!existsSync(localPath)) {
+          logger.warn(`On-entry screenshot not found: ${localPath}`);
+        } else {
+          const cloudPath = `${basePath}/${form.onEntryScreenshot}`;
+          const file = bucket.file(cloudPath);
+          
+          await file.save(readFileSync(localPath), {
+            metadata: {
+              contentType: 'image/png',
+              metadata: {
+                type: 'on-entry',
+                formTitle: form.longTitle,
+                formShortName: form.shortName
+              }
+            }
+          });
+
+          await file.makePublic();
+          uploadedScreenshots[form.onEntryScreenshot] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+          logger.debug(`Uploaded on-entry screenshot: ${form.onEntryScreenshot}`);
+        }
+      } catch (error) {
+        logger.error(`Failed to upload on-entry screenshot ${form.onEntryScreenshot}:`, error);
+      }
+    }
+
+    // Upload on-exit screenshot
+    if (form.onExitScreenshot) {
+      try {
+        const localPath = join(screenshotsDir, form.onExitScreenshot);
+        if (!existsSync(localPath)) {
+          logger.warn(`On-exit screenshot not found: ${localPath}`);
+        } else {
+          const cloudPath = `${basePath}/${form.onExitScreenshot}`;
+          const file = bucket.file(cloudPath);
+          
+          await file.save(readFileSync(localPath), {
+            metadata: {
+              contentType: 'image/png',
+              metadata: {
+                type: 'on-exit',
+                formTitle: form.longTitle,
+                formShortName: form.shortName
+              }
+            }
+          });
+
+          await file.makePublic();
+          uploadedScreenshots[form.onExitScreenshot] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+          logger.debug(`Uploaded on-exit screenshot: ${form.onExitScreenshot}`);
+        }
+      } catch (error) {
+        logger.error(`Failed to upload on-exit screenshot ${form.onExitScreenshot}:`, error);
+      }
+    }
+
+    return uploadedScreenshots;
   }
 
   private async uploadScreenshots(fields: SurveyField[], screenshotsDir: string, basePath: string): Promise<Record<string, string>> {

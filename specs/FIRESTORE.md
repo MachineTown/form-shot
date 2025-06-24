@@ -23,15 +23,28 @@ This document outlines the proposed Firestore database structure for migrating t
   // Analysis metadata
   analysisDate: timestamp,       // When analysis was performed
   url: string,                  // Original survey URL
+  totalForms: number,           // Total number of forms in survey
   
-  // Form metadata
+  // Form metadata (from first form for backward compatibility)
   longTitle: string,            // Full form title
   shortName: string,            // Short form name
   viewportHeight: number,       // Required viewport height
   timestamp: timestamp,         // Form analysis timestamp
   
   // Form fields (subcollection reference)
-  fieldsCount: number,          // Number of questions for quick queries
+  fieldsCount: number,          // Total number of questions across all forms
+  totalFields: number,          // Same as fieldsCount
+  
+  // Test data summary
+  hasTestData: boolean,         // Whether any test data was generated
+  testDataSummary: {
+    fieldsWithTestData: number,
+    totalTestCases: number,
+    generatedTestCases: number,
+    humanTestCases: number,
+    hybridTestCases: number,
+    averageTestCasesPerField: number
+  },
   
   // Cloud Storage references
   screenshotsPath: string,      // Base path to screenshots in Cloud Storage
@@ -40,22 +53,57 @@ This document outlines the proposed Firestore database structure for migrating t
   status: string,               // "completed", "processing", "failed"
   processingDuration: number,   // Analysis time in milliseconds
   
+  // Test run tracking
+  lastTestRunAt: timestamp,     // When last test was run
+  totalTestRuns: number,        // Total test runs executed
+  lastTestRunId: string,        // Reference to latest test run
+  lastTestRunStatus: string,    // Status of latest test run
+  
   // Audit fields
   createdAt: timestamp,
   updatedAt: timestamp
 }
 ```
 
-### Subcollection: `survey-analyses/{docId}/fields`
+### Subcollection: `survey-analyses/{docId}/forms`
 
-**Document ID**: Auto-generated or question number based (e.g., `q1`, `q2_1`)
+**Document ID**: `form_{index}` (e.g., `form_1`, `form_2`)
+
+**Document Schema**:
+```javascript
+{
+  formIndex: number,            // 0-based form index
+  longTitle: string,            // Full form title
+  shortName: string,            // Short form name
+  viewportHeight: number,       // Required viewport height
+  timestamp: timestamp,         // Form analysis timestamp
+  fieldsCount: number,          // Number of questions in this form
+  navigationButtons: array<{    // Available navigation buttons
+    type: string,              // "next", "previous", "finish"
+    text: string,              // Button text
+    selector: string,          // CSS selector
+    isEnabled: boolean         // Whether button was enabled
+  }>,
+  order: number,               // Form order (1-based for display)
+  hasTestData: boolean,        // Whether test data was generated
+  testDataSummary: object,     // Summary of test data for this form
+  onEntryScreenshot: string,   // Filename of on-entry screenshot
+  onExitScreenshot: string,    // Filename of on-exit screenshot
+  onEntryScreenshotUrl: string, // Cloud Storage URL for on-entry screenshot
+  onExitScreenshotUrl: string  // Cloud Storage URL for on-exit screenshot
+}
+```
+
+### Subcollection: `survey-analyses/{docId}/forms/{formId}/fields`
+
+**Document ID**: Question number based (e.g., `q1`, `q2_1`)
 
 **Document Schema**:
 ```javascript
 {
   questionNumber: string,       // e.g., "1.", "2.3"
   questionText: string,         // Clean question text
-  inputType: string,           // "radio", "dropdown", "text", etc.
+  inputType: string,           // "radio", "dropdown", "text", "VAS", etc.
   isRequired: boolean,         // Required field indicator
   choices: array<string>,      // Array of choice options (if applicable)
   selector: string,            // CSS selector for the input
@@ -63,6 +111,75 @@ This document outlines the proposed Firestore database structure for migrating t
   screenshotFilename: string,  // Filename in Cloud Storage
   screenshotUrl: string,       // Direct URL to screenshot
   order: number,               // Question order for sorting
+  formIndex: number,           // Parent form index
+  testData: {                  // Test data metadata (if generated)
+    detectedType: string,
+    confidence: number,
+    detectionMethod: string,
+    generatedAt: string,
+    summary: object,
+    metadata: object
+  },
+  conditionalInfo: {           // For conditional questions
+    isConditional: boolean,
+    parentQuestion: string,
+    parentValue: any,
+    appearedAfter: string
+  }
+}
+```
+
+### Subcollection: `survey-analyses/{docId}/forms/{formId}/fields/{fieldId}/test-cases`
+
+**Document ID**: Test case ID (e.g., `choice_0`, `text_valid_1`)
+
+**Document Schema**:
+```javascript
+{
+  id: string,                  // Test case ID
+  type: string,                // "valid", "boundary", "edge", "invalid"
+  value: any,                  // Test value
+  position: number,            // Position for choice-based inputs
+  description: string,         // Description of test case
+  source: string,              // "generated", "human", "hybrid"
+  provenance: {
+    createdBy: string,         // "system", "user", "admin"
+    createdAt: string,         // ISO timestamp
+    generator: {               // For generated test cases
+      algorithm: string,
+      version: string,
+      template: string,
+      confidence: number
+    },
+    human: {                   // For human-created test cases
+      userId: string,
+      userName: string,
+      reason: string,
+      context: string
+    },
+    modifications: array<{     // Modification history
+      timestamp: string,
+      modifiedBy: string,
+      action: string,
+      changes: object,
+      reason: string
+    }>
+  },
+  status: string,              // "draft", "approved", "rejected", "needs_review"
+  quality: {
+    confidence: number,
+    reviewCount: number,
+    lastReviewed: string
+  },
+  // References for easier querying
+  fieldId: string,
+  formId: string,
+  formIndex: number,
+  questionNumber: string,
+  analysisId: string,
+  customerId: string,
+  studyId: string,
+  createdAt: timestamp
 }
 ```
 
@@ -189,9 +306,13 @@ collection("survey-analyses")
   │   │   ├── {packageName}/
   │   │   │   ├── {language}/
   │   │   │   │   ├── {version}/
-  │   │   │   │   │   ├── question_1_metadata.json
-  │   │   │   │   │   ├── question_1_screenshot.png
-  │   │   │   │   │   ├── question_2_screenshot.png
+  │   │   │   │   │   ├── form_1_on_entry_{customerId}_{studyId}.png
+  │   │   │   │   │   ├── form_1_on_exit_{customerId}_{studyId}.png
+  │   │   │   │   │   ├── form1_question_1_{customerId}_{studyId}.png
+  │   │   │   │   │   ├── form1_question_2_{customerId}_{studyId}.png
+  │   │   │   │   │   ├── form_2_on_entry_{customerId}_{studyId}.png
+  │   │   │   │   │   ├── form_2_on_exit_{customerId}_{studyId}.png
+  │   │   │   │   │   ├── form2_question_1_{customerId}_{studyId}.png
   │   │   │   │   │   └── ...
 
 /test-runs/
@@ -204,8 +325,11 @@ collection("survey-analyses")
 ```
 
 ### File Naming Convention
-- Screenshots: `question_{questionNumber}_{customerId}_{studyId}.png`
-- Metadata: `question_{questionNumber}_metadata.json`
+- Form-level screenshots: 
+  - On-entry: `form_{formIndex}_on_entry_{customerId}_{studyId}.png`
+  - On-exit: `form_{formIndex}_on_exit_{customerId}_{studyId}.png`
+- Question screenshots: `form{formIndex}_question_{questionNumber}_{customerId}_{studyId}.png`
+- Test run screenshots: `test_{questionNumber}_{testCaseId}_{timestamp}.png`
 
 ## Migration Considerations
 
