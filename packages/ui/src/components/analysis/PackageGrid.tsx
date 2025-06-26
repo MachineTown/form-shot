@@ -153,7 +153,15 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
       studyId: analysis.studyId,
       packageName: analysis.packageName,
     }));
-    navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`);
+    
+    // If clicking a specific language chip, navigate to that language
+    // If clicking the card and there's only one language, navigate to that language
+    // If clicking the card and there are multiple languages, navigate without language
+    if (language || packageGroup.analyses.length === 1) {
+      navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`);
+    } else {
+      navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}`);
+    }
   };
 
   if (isLoading) {

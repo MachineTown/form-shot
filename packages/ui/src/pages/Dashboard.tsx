@@ -90,7 +90,15 @@ const Dashboard: React.FC = () => {
     const analysis = language 
       ? packageGroup.analyses.find(a => a.language === language) || packageGroup.primaryAnalysis
       : packageGroup.primaryAnalysis;
-    navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`);
+    
+    // If clicking a specific language chip, navigate to that language
+    // If clicking the card and there's only one language, navigate to that language
+    // If clicking the card and there are multiple languages, navigate without language
+    if (language || packageGroup.analyses.length === 1) {
+      navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`);
+    } else {
+      navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}`);
+    }
   };
 
   return (
