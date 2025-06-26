@@ -67,11 +67,12 @@
   - Both upload and test-run commands clean up local files by default (use --leave flag to keep them)
 
 *** Frontend ***
-Use mui-x community edition component library (https://github.com/mui/mui-x) and mui https://github.com/mui/material-ui
 Use firestore and firebase auth and cloud storage 
-Use tailwind
-Use npm
-Use latest React
+Use technology in specs/ui-tech.md by preference
+
+*** Package / Analysis Languages and versions ***
+- on the /analysis page, only load the latest version for each customer / study / package name / language.
+- on the /analysis page for a customer or a study - group together cards that have the same package title. Adjust the chips at the top of the card to show all the languages that are grouped.
 
 *** Screenshots ***
 - The analyse tool should allow a specification of the viewport - default should be 767px x 1024px

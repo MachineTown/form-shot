@@ -70,28 +70,71 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
     return Array.from(studySet).sort();
   }, [analyses]);
 
-  // Filter and sort analyses
-  const filteredAnalyses = useMemo(() => {
+  // Group packages and filter
+  const groupedPackages = useMemo(() => {
     if (!analyses) return [];
     
-    // Create a shallow copy to avoid mutating the immutable array
-    let filtered = [...analyses];
+    // First, get latest version for each customer/study/package/language combination
+    const latestVersionMap = new Map<string, typeof analyses[0]>();
     
-    // Apply language filter
+    analyses.forEach(analysis => {
+      const key = `${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`;
+      const existing = latestVersionMap.get(key);
+      
+      if (!existing || 
+          (analysis.analysisDate?.toMillis ? analysis.analysisDate.toMillis() : new Date(analysis.analysisDate as any).getTime()) >
+          (existing.analysisDate?.toMillis ? existing.analysisDate.toMillis() : new Date(existing.analysisDate as any).getTime())) {
+        latestVersionMap.set(key, analysis);
+      }
+    });
+    
+    // Apply filters before grouping
+    let filtered = Array.from(latestVersionMap.values());
+    
+    if (studyFilter !== 'all') {
+      filtered = filtered.filter(a => a.studyId === studyFilter);
+    }
+    
     if (languageFilter !== 'all') {
       filtered = filtered.filter(a => a.language === languageFilter);
     }
     
-    // Apply study filter
-    if (studyFilter !== 'all') {
-      filtered = filtered.filter(a => a.studyId === studyFilter);
-    }
-
-    return filtered.sort((a, b) => {
+    // Now group by package name
+    const packageGroups = new Map<string, {
+      packageName: string;
+      analyses: typeof analyses;
+      latestDate: Date;
+      primaryAnalysis: typeof analyses[0];
+    }>();
+    
+    filtered.forEach(analysis => {
+      const packageKey = `${analysis.customerId}/${analysis.studyId}/${analysis.packageName}`;
+      const existing = packageGroups.get(packageKey);
+      
+      if (existing) {
+        existing.analyses.push(analysis);
+        const analysisDate = analysis.analysisDate?.toDate ? analysis.analysisDate.toDate() : new Date(analysis.analysisDate as any);
+        if (analysisDate > existing.latestDate) {
+          existing.latestDate = analysisDate;
+          existing.primaryAnalysis = analysis;
+        }
+      } else {
+        packageGroups.set(packageKey, {
+          packageName: analysis.packageName,
+          analyses: [analysis],
+          latestDate: analysis.analysisDate?.toDate ? analysis.analysisDate.toDate() : new Date(analysis.analysisDate as any),
+          primaryAnalysis: analysis
+        });
+      }
+    });
+    
+    // Convert to array and sort
+    const grouped = Array.from(packageGroups.values());
+    
+    return grouped.sort((a, b) => {
       if (sortBy === 'date-asc' || sortBy === 'date-desc') {
-        // Handle both Timestamp objects and already converted dates
-        const dateA = a.analysisDate?.toMillis ? a.analysisDate.toMillis() : new Date(a.analysisDate as any).getTime();
-        const dateB = b.analysisDate?.toMillis ? b.analysisDate.toMillis() : new Date(b.analysisDate as any).getTime();
+        const dateA = a.latestDate.getTime();
+        const dateB = b.latestDate.getTime();
         return sortBy === 'date-asc' ? dateA - dateB : dateB - dateA;
       } else {
         return a.packageName.localeCompare(b.packageName);
@@ -99,7 +142,11 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
     });
   }, [analyses, languageFilter, studyFilter, sortBy]);
 
-  const handlePackageClick = (analysis: typeof filteredAnalyses[0]) => {
+  const handlePackageClick = (packageGroup: typeof groupedPackages[0], language?: string) => {
+    const analysis = language 
+      ? packageGroup.analyses.find(a => a.language === language) || packageGroup.primaryAnalysis
+      : packageGroup.primaryAnalysis;
+      
     dispatch(addToRecentlyViewed({
       id: analysis.id,
       customerId: analysis.customerId,
@@ -196,124 +243,132 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
 
       {/* Package Grid */}
       <Grid container spacing={3}>
-        {filteredAnalyses.map((analysis) => (
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={analysis.id}>
-            <Card
-              sx={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                overflow: 'hidden',
-                bgcolor: 'grey.100',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4,
-                },
-              }}
-              onClick={() => handlePackageClick(analysis)}
-            >
-              {/* Top bar with chips */}
-              <Box
+        {groupedPackages.map((packageGroup) => {
+          const primaryAnalysis = packageGroup.primaryAnalysis;
+          const packageKey = `${primaryAnalysis.customerId}/${primaryAnalysis.studyId}/${primaryAnalysis.packageName}`;
+          
+          return (
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={packageKey}>
+              <Card
                 sx={{
-                  bgcolor: 'grey.100',
-                  px: 1.5,
-                  py: 0.75,
+                  height: '100%',
                   display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'center',
-                  borderBottom: 1,
-                  borderColor: 'divider',
+                  flexDirection: 'column',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  overflow: 'hidden',
+                  bgcolor: 'grey.100',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: 4,
+                  },
                 }}
+                onClick={() => handlePackageClick(packageGroup)}
               >
-                {/* Language and version chips */}
+                {/* Top bar with chips */}
                 <Box
                   sx={{
+                    bgcolor: 'grey.100',
+                    px: 1.5,
+                    py: 0.75,
                     display: 'flex',
-                    gap: 0.5,
+                    justifyContent: 'flex-end',
+                    alignItems: 'center',
+                    borderBottom: 1,
+                    borderColor: 'divider',
                   }}
                 >
-                  <Chip
-                    label={analysis.language.toUpperCase()}
-                    size="small"
-                    color="primary"
-                    icon={<LanguageIcon />}
-                  />
-                  <Chip
-                    label={analysis.version}
-                    size="small"
-                    variant="outlined"
-                  />
-                </Box>
-              </Box>
-
-              {/* Screenshot Preview */}
-              <CardMedia
-                component="div"
-                sx={{
-                  height: 140,
-                  bgcolor: 'grey.200',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-              >
-                {analysis.firstFormOnEntryScreenshotUrl ? (
+                  {/* Language chips */}
                   <Box
-                    component="img"
-                    src={analysis.firstFormOnEntryScreenshotUrl}
-                    alt={`${analysis.packageName} preview`}
                     sx={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      objectPosition: 'top',
+                      display: 'flex',
+                      gap: 0.5,
+                      flexWrap: 'wrap',
                     }}
-                  />
-                ) : (
-                  <PreviewIcon sx={{ fontSize: 48, color: 'grey.400' }} />
-                )}
-              </CardMedia>
-
-              <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ flexGrow: 1 }}>
-                  <Typography gutterBottom variant="h6" component="div">
-                    {analysis.packageName}
-                  </Typography>
-                  
-                  <Typography variant="body2" color="text.secondary">
-                    {analysis.longTitle || analysis.shortName}
-                  </Typography>
-                </Box>
-
-                {/* Bottom row with field count and date */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <DescriptionIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
-                    <Typography variant="caption" color="text.secondary">
-                      {analysis.fieldsCount} fields
-                    </Typography>
-                  </Box>
-                  
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <ScheduleIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
-                    <Typography variant="caption" color="text.secondary">
-                      {analysis.analysisDate?.toDate 
-                        ? new Date(analysis.analysisDate.toDate()).toLocaleDateString()
-                        : new Date(analysis.analysisDate as any).toLocaleDateString()}
-                    </Typography>
+                  >
+                    {packageGroup.analyses
+                      .sort((a, b) => a.language.localeCompare(b.language))
+                      .map((analysis) => (
+                        <Chip
+                          key={analysis.language}
+                          label={analysis.language.toUpperCase()}
+                          size="small"
+                          color="primary"
+                          icon={<LanguageIcon />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePackageClick(packageGroup, analysis.language);
+                          }}
+                        />
+                      ))}
                   </Box>
                 </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+
+                {/* Screenshot Preview */}
+                <CardMedia
+                  component="div"
+                  sx={{
+                    height: 140,
+                    bgcolor: 'grey.200',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {primaryAnalysis.firstFormOnEntryScreenshotUrl ? (
+                    <Box
+                      component="img"
+                      src={primaryAnalysis.firstFormOnEntryScreenshotUrl}
+                      alt={`${primaryAnalysis.packageName} preview`}
+                      sx={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        objectPosition: 'top',
+                      }}
+                    />
+                  ) : (
+                    <PreviewIcon sx={{ fontSize: 48, color: 'grey.400' }} />
+                  )}
+                </CardMedia>
+
+                <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography gutterBottom variant="h6" component="div">
+                      {primaryAnalysis.packageName}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary">
+                      {primaryAnalysis.longTitle || primaryAnalysis.shortName}
+                    </Typography>
+                  </Box>
+
+                  {/* Bottom row with field count and date */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <DescriptionIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
+                      <Typography variant="caption" color="text.secondary">
+                        {primaryAnalysis.fieldsCount} fields
+                      </Typography>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <ScheduleIcon sx={{ fontSize: 16, mr: 0.5 }} color="action" />
+                      <Typography variant="caption" color="text.secondary">
+                        {packageGroup.latestDate.toLocaleDateString()}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
 
-      {filteredAnalyses.length === 0 && (
+      {groupedPackages.length === 0 && (
         <Box
           sx={{
             textAlign: 'center',
