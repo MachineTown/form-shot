@@ -106,7 +106,7 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
       studyId: analysis.studyId,
       packageName: analysis.packageName,
     }));
-    navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}`);
+    navigate(`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`);
   };
 
   if (isLoading) {

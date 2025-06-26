@@ -61,22 +61,28 @@ const Sidebar: React.FC = () => {
     customerId: selectedCustomer || undefined,
   });
 
-  // Group analyses by study
-  const studiesByCustomer = useMemo(() => {
-    if (!analyses) return {};
+  // Group analyses by study and count analyses per customer
+  const { studiesByCustomer, analysisCountByCustomer } = useMemo(() => {
+    if (!analyses) return { studiesByCustomer: {}, analysisCountByCustomer: {} };
     
     const grouped: Record<string, Set<string>> = {};
+    const counts: Record<string, number> = {};
+    
     analyses.forEach((analysis) => {
       if (!grouped[analysis.customerId]) {
         grouped[analysis.customerId] = new Set();
+        counts[analysis.customerId] = 0;
       }
       grouped[analysis.customerId].add(analysis.studyId);
+      counts[analysis.customerId]++;
     });
     
-    return Object.entries(grouped).reduce((acc, [customerId, studies]) => {
+    const studiesByCustomer = Object.entries(grouped).reduce((acc, [customerId, studies]) => {
       acc[customerId] = Array.from(studies);
       return acc;
     }, {} as Record<string, string[]>);
+    
+    return { studiesByCustomer, analysisCountByCustomer: counts };
   }, [analyses]);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,7 +106,9 @@ const Sidebar: React.FC = () => {
   const handleRecentClick = (item: typeof recentlyViewed[0]) => {
     dispatch(setSelectedCustomer(item.customerId));
     dispatch(setSelectedStudy(item.studyId));
-    navigate(`/analysis/${item.customerId}/${item.studyId}/${item.packageName}`);
+    // For recently viewed items, we need to find the analysis to get the language
+    // Since we don't store language in recentlyViewed, navigate to the study view instead
+    navigate(`/analysis/${item.customerId}/${item.studyId}`);
   };
 
   const handleDrawerClose = () => {
@@ -152,7 +160,7 @@ const Sidebar: React.FC = () => {
                   </ListItemIcon>
                   <ListItemText 
                     primary={customer.name}
-                    secondary={`${customer.totalAnalyses} analyses`}
+                    secondary={`${analysisCountByCustomer[customer.customerId] || 0} analyses`}
                   />
                   {selectedCustomer === customer.customerId ? <ExpandLess /> : <ExpandMore />}
                 </ListItemButton>

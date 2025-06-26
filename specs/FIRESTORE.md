@@ -194,7 +194,6 @@ This document outlines the proposed Firestore database structure for migrating t
   name: string,                // Full customer name
   createdAt: timestamp,
   lastAnalysisAt: timestamp,
-  totalAnalyses: number,       // Counter for analytics
   activeStudies: array<string> // List of active study IDs
 }
 ```

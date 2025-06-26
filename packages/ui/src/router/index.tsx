@@ -42,7 +42,7 @@ export const router = createBrowserRouter([
         element: withSuspense(AnalysisPage),
       },
       {
-        path: 'analysis/:customerId/:studyId/:packageName',
+        path: 'analysis/:customerId/:studyId/:packageName/:language',
         element: withSuspense(PackageDetailPage),
       },
       {

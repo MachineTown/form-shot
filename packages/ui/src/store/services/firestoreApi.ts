@@ -48,7 +48,6 @@ export interface Customer {
   name: string;
   createdAt: Timestamp;
   lastAnalysisAt: Timestamp;
-  totalAnalyses: number;
   activeStudies: string[];
 }
 

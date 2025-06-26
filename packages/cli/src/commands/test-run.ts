@@ -61,6 +61,25 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
     // Wait for survey container
     await page.waitForSelector('#survey-body-container', { timeout: 10000 });
     
+    // Add a wait to ensure form is fully loaded and any dynamic content has rendered
+    logger.info('Waiting for form to fully load...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Import necessary services for form navigation
+    const { FormNavigator, FormResetService } = await import('@form-shot/shared');
+    const formNavigator = new FormNavigator();
+    const formResetService = new FormResetService();
+    
+    // Check if we need to navigate to first form
+    logger.info('Checking if we need to navigate to first form...');
+    const isFirstForm = await formResetService.isFirstForm(page);
+    if (!isFirstForm) {
+      logger.info('Not on first form, navigating to first form...');
+      await formResetService.navigateToFirstForm(page, 3000);
+    } else {
+      logger.info('Already on first form');
+    }
+    
     const results: TestCaseResult[] = [];
     let fieldsProcessed = 0;
     let testCasesExecuted = 0;
@@ -68,87 +87,271 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
     let failedTestCases = 0;
     let validationErrorsFound = 0;
     
-    // Process fields in order
-    const sortedFields = analysisData.fields.sort((a: any, b: any) => a.order - b.order);
-    
-    for (const field of sortedFields) {
-      if (!field.testData || !field.testData.testCases || field.testData.testCases.length === 0) {
-        logger.info(`Skipping field ${field.questionNumber} - no test cases`);
-        continue;
+    // Group fields by form index
+    const fieldsByForm = new Map<number, any[]>();
+    for (const field of analysisData.fields) {
+      const formIndex = field.formIndex || 0;
+      if (!fieldsByForm.has(formIndex)) {
+        fieldsByForm.set(formIndex, []);
       }
+      fieldsByForm.get(formIndex)!.push(field);
+    }
+    
+    // Sort forms by index
+    const sortedFormIndices = Array.from(fieldsByForm.keys()).sort((a, b) => a - b);
+    logger.info(`Found ${sortedFormIndices.length} forms to process`);
+    
+    // Process each form
+    for (const formIndex of sortedFormIndices) {
+      const formFields = fieldsByForm.get(formIndex)!;
+      logger.info(`\n=== Processing Form ${formIndex + 1} with ${formFields.length} fields ===`);
       
-      logger.info(`Processing field ${field.questionNumber}: "${field.questionText}"`);
-      fieldsProcessed++;
-      
-      // Process test cases for this field
-      for (const testCase of field.testData.testCases) {
-        const testCaseStart = Date.now();
-        testCasesExecuted++;
+      // Add form state debugging
+      logger.info(`Checking current form state before processing form ${formIndex + 1}...`);
+      const currentFormInfo = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return { error: 'No survey container found' };
         
-        logger.info(`  Executing test case: ${testCase.id} (${testCase.description})`);
+        // Get form title
+        const pElements = container.querySelectorAll('p');
+        const h3Elements = container.querySelectorAll('h3');
+        const longTitle = pElements[0]?.textContent?.trim() || 'Unknown';
+        const shortName = h3Elements[0]?.textContent?.trim() || 'Unknown';
         
-        const result: TestCaseResult = {
-          fieldId: field.id,
-          testCaseId: testCase.id,
-          questionNumber: field.questionNumber,
-          testCaseValue: testCase.value,
-          applied: false,
-          validationTriggered: false,
-          validationMessages: [],
-          screenshotPath: '',
-          duration: 0
-        };
-        
-        try {
-          // Apply test case value to field
-          await applyTestCaseValue(page, field, testCase);
-          result.applied = true;
-          
-          // Move focus away to trigger validation
-          await page.keyboard.press('Tab');
-          
-          // Wait for potential validation
-          if (!options.skipValidation) {
-            await new Promise(resolve => setTimeout(resolve, options.delay || 500));
-            
-            // Check for validation messages
-            const validationResult = await checkValidationMessages(page, field);
-            result.validationTriggered = validationResult.triggered;
-            result.validationMessages = validationResult.messages;
-            
-            if (result.validationTriggered) {
-              validationErrorsFound++;
-              logger.info(`    Validation triggered: ${result.validationMessages.join(', ')}`);
+        // Get visible questions
+        const visibleQuestions: string[] = [];
+        const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+        cardBoxes.forEach((box) => {
+          const style = window.getComputedStyle(box);
+          if (style.display !== 'none' && style.visibility !== 'hidden') {
+            const text = box.textContent || '';
+            const match = text.match(/^(\d+\.?\d*\.?)/);
+            if (match) {
+              visibleQuestions.push(match[1]);
             }
           }
-          
-          // Take screenshot of the field
-          const screenshotPath = await captureFieldScreenshot(
-            page, 
-            field, 
-            testCase, 
-            runOutputDir
-          );
-          result.screenshotPath = screenshotPath;
-          
-          successfulTestCases++;
-          logger.info(`    ✅ Test case completed successfully`);
-          
-        } catch (error) {
-          result.error = error instanceof Error ? error.message : String(error);
-          failedTestCases++;
-          logger.error(`    ❌ Test case failed: ${result.error}`);
+        });
+        
+        // Get navigation buttons
+        const navArea = container.nextElementSibling;
+        const buttons: string[] = [];
+        if (navArea) {
+          const buttonElements = navArea.querySelectorAll('button');
+          buttonElements.forEach(btn => {
+            if (!btn.disabled) {
+              buttons.push(btn.textContent?.trim() || '');
+            }
+          });
         }
         
-        result.duration = Date.now() - testCaseStart;
-        results.push(result);
-        
-        // Small delay between test cases
-        await new Promise(resolve => setTimeout(resolve, 100));
+        return {
+          longTitle,
+          shortName,
+          visibleQuestions,
+          visibleQuestionCount: visibleQuestions.length,
+          navigationButtons: buttons,
+          hasContent: container.children.length > 0
+        };
+      });
+      
+      logger.info(`Current form state:`, JSON.stringify(currentFormInfo, null, 2));
+      
+      // Verify we're on the right form
+      if (formIndex > 0 && currentFormInfo.visibleQuestionCount === 0) {
+        logger.warn(`⚠️ Form ${formIndex + 1} appears to have no visible questions. Navigation may have failed.`);
       }
       
-      // Delay between fields
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Sort fields within the form by order
+      const sortedFields = formFields.sort((a: any, b: any) => a.order - b.order);
+      
+      // Process fields in the current form
+      for (const field of sortedFields) {
+        if (!field.testData || !field.testData.testCases || field.testData.testCases.length === 0) {
+          logger.info(`Skipping field ${field.questionNumber} - no test cases`);
+          continue;
+        }
+        
+        logger.info(`Processing field ${field.questionNumber}: "${field.questionText}"`);
+        
+        // Check if this field is actually visible on the current form
+        const isFieldVisible = await page.evaluate((questionNum: string) => {
+          const container = document.querySelector('#survey-body-container');
+          if (!container) return false;
+          
+          const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+          for (const box of cardBoxes) {
+            const text = box.textContent || '';
+            if (text.includes(questionNum)) {
+              const style = window.getComputedStyle(box);
+              return style.display !== 'none' && 
+                     style.visibility !== 'hidden' && 
+                     (box as HTMLElement).offsetHeight > 0;
+            }
+          }
+          return false;
+        }, field.questionNumber);
+        
+        if (!isFieldVisible) {
+          logger.warn(`⚠️ Field ${field.questionNumber} is not visible on current form. It may be on a different form or conditional. Skipping...`);
+          continue;
+        }
+        
+        fieldsProcessed++;
+        
+        // Process test cases for this field
+        for (const testCase of field.testData.testCases) {
+          const testCaseStart = Date.now();
+          testCasesExecuted++;
+          
+          logger.info(`  Executing test case: ${testCase.id} (${testCase.description})`);
+          
+          const result: TestCaseResult = {
+            fieldId: field.id,
+            testCaseId: testCase.id,
+            questionNumber: field.questionNumber,
+            testCaseValue: testCase.value,
+            applied: false,
+            validationTriggered: false,
+            validationMessages: [],
+            screenshotPath: '',
+            duration: 0
+          };
+          
+          try {
+            // Apply test case value to field
+            await applyTestCaseValue(page, field, testCase);
+            result.applied = true;
+            
+            // Move focus away to trigger validation
+            await page.keyboard.press('Tab');
+            
+            // Wait for potential validation
+            if (!options.skipValidation) {
+              await new Promise(resolve => setTimeout(resolve, options.delay || 500));
+              
+              // Check for validation messages
+              const validationResult = await checkValidationMessages(page, field);
+              result.validationTriggered = validationResult.triggered;
+              result.validationMessages = validationResult.messages;
+              
+              if (result.validationTriggered) {
+                validationErrorsFound++;
+                logger.info(`    Validation triggered: ${result.validationMessages.join(', ')}`);
+              }
+            }
+            
+            // Take screenshot of the field
+            const screenshotPath = await captureFieldScreenshot(
+              page, 
+              field, 
+              testCase, 
+              runOutputDir
+            );
+            result.screenshotPath = screenshotPath;
+            
+            successfulTestCases++;
+            logger.info(`    ✅ Test case completed successfully`);
+            
+          } catch (error) {
+            result.error = error instanceof Error ? error.message : String(error);
+            failedTestCases++;
+            logger.error(`    ❌ Test case failed: ${result.error}`);
+          }
+          
+          result.duration = Date.now() - testCaseStart;
+          results.push(result);
+          
+          // Small delay between test cases
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // Delay between fields
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      // After processing all fields in the form, navigate to next form if not the last
+      if (formIndex < sortedFormIndices[sortedFormIndices.length - 1]) {
+        logger.info(`\nPreparing to navigate from form ${formIndex + 1} to form ${formIndex + 2}...`);
+        
+        try {
+          // First, fill any required fields that haven't been filled yet
+          logger.info('Checking for unfilled required fields before navigation...');
+          await formNavigator.fillMissingRequiredFields(page);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Detect navigation buttons
+          const navButtons = await formNavigator.detectNavigationButtons(page);
+          logger.info(`Available navigation buttons: ${navButtons.map(b => `${b.type}(${b.text})`).join(', ')}`);
+          
+          const nextButton = navButtons.find(b => b.type === 'next' && b.isEnabled);
+          
+          if (nextButton) {
+            // Take screenshot before navigation
+            const beforeNavPath = join(runOutputDir, `before_nav_form${formIndex + 1}_to_form${formIndex + 2}.png`) as `${string}.png`;
+            await page.screenshot({ 
+              path: beforeNavPath,
+              fullPage: true 
+            });
+            
+            // Click next button to go to next form
+            logger.info(`Clicking next button: "${nextButton.text}"`);
+            await formNavigator.clickNavigationButton(page, 'next', 3000);
+            
+            // Wait for form transition
+            logger.info('Waiting for form transition...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Check if navigation was successful
+            const afterNavInfo = await page.evaluate(() => {
+              const container = document.querySelector('#survey-body-container');
+              if (!container) return { error: 'No container' };
+              
+              const pElements = container.querySelectorAll('p');
+              const h3Elements = container.querySelectorAll('h3');
+              const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+              
+              return {
+                longTitle: pElements[0]?.textContent?.trim() || 'Unknown',
+                shortName: h3Elements[0]?.textContent?.trim() || 'Unknown',
+                visibleCardBoxCount: cardBoxes.length,
+                hasContent: container.children.length > 0
+              };
+            });
+            
+            logger.info(`After navigation state:`, JSON.stringify(afterNavInfo, null, 2));
+            
+            // Take screenshot after navigation
+            const afterNavPath = join(runOutputDir, `after_nav_to_form${formIndex + 2}.png`) as `${string}.png`;
+            await page.screenshot({ 
+              path: afterNavPath,
+              fullPage: true 
+            });
+            
+            // Check for validation modal
+            const hasModal = await formNavigator.detectValidationModal(page);
+            if (hasModal) {
+              logger.warn('Validation modal detected, closing and retrying...');
+              await formNavigator.closeValidationModal(page);
+              // Try to fill any missing required fields and navigate again
+              await formNavigator.fillMissingRequiredFields(page);
+              await formNavigator.clickNavigationButton(page, 'next', 3000);
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            
+            // Clear any existing values on the new form
+            logger.info(`Clearing any existing values on form ${formIndex + 2}...`);
+            await formResetService.clearFormValues(page);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+          } else {
+            logger.warn(`No enabled next button found on form ${formIndex + 1}`);
+            logger.warn(`Available buttons: ${navButtons.map(b => `${b.type}(${b.text}, enabled:${b.isEnabled})`).join(', ')}`);
+          }
+        } catch (navError) {
+          logger.error(`Failed to navigate from form ${formIndex + 1}:`, navError);
+          // Continue with next form anyway
+        }
+      }
     }
     
     const endTime = new Date();
@@ -218,8 +421,17 @@ async function applyTestCaseValue(page: any, field: any, testCase: any): Promise
     throw new Error(`No selector found for field ${field.questionNumber}`);
   }
   
-  // Wait for element to be available
-  await page.waitForSelector(selector, { timeout: 5000 });
+  // Wait for element to be available - be more flexible with generic selectors
+  try {
+    if (selector.endsWith('[class*="CardBox"]')) {
+      // For generic selectors, just ensure the survey container is there
+      await page.waitForSelector('#survey-body-container', { timeout: 5000 });
+    } else {
+      await page.waitForSelector(selector, { timeout: 5000 });
+    }
+  } catch (error) {
+    logger.warn(`Could not wait for selector ${selector}, proceeding anyway`);
+  }
   
   switch (field.inputType.toLowerCase()) {
     case 'vas':
@@ -322,6 +534,52 @@ async function applyRadioValue(page: any, field: any, testCase: any): Promise<vo
   // For radio buttons, value is typically the position/index
   const radioIndex = typeof testCase.value === 'number' ? testCase.value : parseInt(testCase.value);
   
+  logger.info(`Attempting to select radio button for field ${field.questionNumber} with index ${radioIndex}`);
+  logger.debug(`Field cardBoxSelector: ${field.cardBoxSelector}`);
+  
+  // First, try question number-based approach if cardBoxSelector is generic
+  if (field.cardBoxSelector === '#survey-body-container [class*="CardBox"]' || 
+      field.cardBoxSelector.endsWith('[class*="CardBox"]')) {
+    logger.info(`Using question number-based approach for field ${field.questionNumber} due to generic selector`);
+    
+    // Try to find the specific CardBox by question number
+    const result = await page.evaluate((questionNum: string, radioIdx: number) => {
+      const cardBoxes = document.querySelectorAll('#survey-body-container [class*="CardBox"]');
+      for (const cardBox of cardBoxes) {
+        const text = cardBox.textContent || '';
+        // Look for the question number at the start of the text content
+        if (text.includes(questionNum) && text.indexOf(questionNum) < 50) {
+          // Found the right CardBox, now find radio buttons
+          const radios = cardBox.querySelectorAll('input[type="radio"]');
+          if (radios.length > radioIdx) {
+            const radio = radios[radioIdx] as HTMLInputElement;
+            radio.scrollIntoView({ block: 'center' });
+            radio.click();
+            return { clicked: true, count: radios.length, found: true };
+          }
+          return { clicked: false, count: radios.length, found: true };
+        }
+      }
+      return { clicked: false, count: 0, found: false };
+    }, field.questionNumber, radioIndex);
+    
+    if (result.found) {
+      logger.info(`Found specific CardBox for question ${field.questionNumber} with ${result.count} radio buttons`);
+      if (result.clicked) {
+        logger.info(`Successfully selected radio button ${radioIndex} using question number approach`);
+        
+        // Verify the selection
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return;
+      } else {
+        logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox`);
+      }
+    } else {
+      logger.warn(`Could not find CardBox for question ${field.questionNumber} using question number approach`);
+    }
+  }
+  
+  // Fallback to selector-based approach
   // Try multiple radio button selectors in order of preference, scoped to survey container
   const radioSelectors = [
     `${field.cardBoxSelector} input[type="radio"]`,
@@ -374,6 +632,62 @@ async function applyRadioValue(page: any, field: any, testCase: any): Promise<vo
     }
   }
   
+  // If still no radio buttons found and we have a question number, try one more approach
+  if (radioButtons.length === 0 && field.questionNumber) {
+    logger.info(`Last resort: searching for radio buttons by question text proximity`);
+    
+    const foundRadios = await page.evaluate((questionNum: string) => {
+      const container = document.querySelector('#survey-body-container');
+      if (!container) return [];
+      
+      // Find all elements containing the question number
+      const allElements = container.querySelectorAll('*');
+      for (const element of allElements) {
+        if (element.textContent?.includes(questionNum)) {
+          // Look for radio buttons in the parent elements
+          let current = element;
+          let maxLevels = 5;
+          while (current && maxLevels > 0) {
+            const radios = current.querySelectorAll('input[type="radio"]');
+            if (radios.length > 0) {
+              // Return selector info for these radios
+              const radioInfo = Array.from(radios).map((r, idx) => ({
+                index: idx,
+                id: r.id,
+                name: (r as HTMLInputElement).name,
+                value: (r as HTMLInputElement).value
+              }));
+              return radioInfo;
+            }
+            current = current.parentElement as Element;
+            maxLevels--;
+          }
+        }
+      }
+      return [];
+    }, field.questionNumber);
+    
+    if (foundRadios.length > 0) {
+      logger.info(`Found ${foundRadios.length} radio buttons near question ${field.questionNumber}`);
+      // Try to click using the found radio info
+      if (radioIndex < foundRadios.length) {
+        const targetRadio = foundRadios[radioIndex];
+        if (targetRadio.id) {
+          await page.click(`#${targetRadio.id}`);
+          logger.info(`Clicked radio by ID: ${targetRadio.id}`);
+          return;
+        } else if (targetRadio.name) {
+          const radios = await page.$$(`input[type="radio"][name="${targetRadio.name}"]`);
+          if (radios.length > radioIndex) {
+            await radios[radioIndex].click();
+            logger.info(`Clicked radio by name and index: ${targetRadio.name}[${radioIndex}]`);
+            return;
+          }
+        }
+      }
+    }
+  }
+  
   if (radioButtons.length === 0) {
     throw new Error(`No radio buttons found for field ${field.questionNumber}. Tried selectors: ${radioSelectors.join(', ')}`);
   }
@@ -385,6 +699,9 @@ async function applyRadioValue(page: any, field: any, testCase: any): Promise<vo
   // Click the radio button at the specified index
   await radioButtons[radioIndex].click();
   logger.debug(`Selected radio button ${radioIndex} (${usedSelector}) for field ${field.questionNumber}`);
+  
+  // Wait a bit and verify the selection
+  await new Promise(resolve => setTimeout(resolve, 200));
 }
 
 async function applySelectValue(page: any, field: any, testCase: any): Promise<void> {

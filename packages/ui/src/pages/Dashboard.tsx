@@ -134,7 +134,7 @@ const Dashboard: React.FC = () => {
                     </Typography>
                   </CardContent>
                   <CardActions>
-                    <Button size="small" href={`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}`}>
+                    <Button size="small" href={`/analysis/${analysis.customerId}/${analysis.studyId}/${analysis.packageName}/${analysis.language}`}>
                       View Details
                     </Button>
                   </CardActions>

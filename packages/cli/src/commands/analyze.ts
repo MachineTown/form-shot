@@ -69,6 +69,13 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
       logger.info(`Found form ${formIndex + 1}: "${form.longTitle}" with ${form.fields.length} fields`);
       logger.info(`Navigation buttons: ${navButtons.map(b => b.type).join(', ')}`);
       
+      // Debug: Log field details for forms with few fields
+      if (form.fields.length <= 3) {
+        form.fields.forEach(field => {
+          logger.info(`  Field ${field.questionNumber}: "${field.questionText}" (type: ${field.inputType}, required: ${field.isRequired})`);
+        });
+      }
+      
       forms.push(form);
       
       // Check if this is the last form (has finish button)

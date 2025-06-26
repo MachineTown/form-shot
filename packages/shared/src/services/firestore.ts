@@ -521,7 +521,6 @@ export class FirestoreService {
         // Update existing customer
         await customerRef.update({
           lastAnalysisAt: admin.firestore.FieldValue.serverTimestamp(),
-          totalAnalyses: admin.firestore.FieldValue.increment(1),
           activeStudies: admin.firestore.FieldValue.arrayUnion(studyId)
         });
       } else {
@@ -531,7 +530,6 @@ export class FirestoreService {
           name: customerId, // Could be enhanced with full name mapping
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           lastAnalysisAt: admin.firestore.FieldValue.serverTimestamp(),
-          totalAnalyses: 1,
           activeStudies: [studyId]
         });
       }

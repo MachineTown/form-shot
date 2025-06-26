@@ -72,6 +72,11 @@ export class FormNavigator {
     const initialQuestions = await this.getVisibleQuestions(page);
     logger.info(`Initial visible questions: ${initialQuestions.join(', ')}`);
     
+    // Check if this form needs at least one field filled for navigation
+    const navButtons = await this.detectNavigationButtons(page);
+    const hasNextButton = navButtons.some(b => b.type === 'next');
+    const needsAtLeastOneField = hasNextButton && fields.length > 0 && filledQuestions.size === 0;
+    
     // Process fields in order, checking for new conditional fields after each one
     for (const field of allFields) {
       // Skip if already filled (including conditional fields filled immediately)
@@ -80,7 +85,8 @@ export class FormNavigator {
       }
       
       // Check if field is required or VAS (VAS needs interaction even if not required)
-      if (!field.isRequired && field.inputType !== 'VAS') {
+      // OR if we need at least one field filled for navigation
+      if (!field.isRequired && field.inputType !== 'VAS' && !needsAtLeastOneField) {
         continue;
       }
       
@@ -162,6 +168,24 @@ export class FormNavigator {
       } catch (error) {
         logger.error(`Failed to fill field ${field.questionNumber}:`, error);
         throw error;
+      }
+      
+      // If we filled at least one field, we don't need to force fill anymore
+      if (needsAtLeastOneField && filledQuestions.size > 0) {
+        break;
+      }
+    }
+    
+    // If we still haven't filled any fields but we have a next button and fields, fill the first field
+    if (filledQuestions.size === 0 && hasNextButton && fields.length > 0) {
+      logger.info('No fields filled yet, but form has next button. Filling first field to enable navigation...');
+      const firstField = fields[0];
+      try {
+        logger.info(`Force filling field ${firstField.questionNumber} (${firstField.inputType})`);
+        await this.fillFieldAndGetValue(page, firstField);
+        filledQuestions.add(firstField.questionNumber);
+      } catch (error) {
+        logger.error(`Failed to force fill first field:`, error);
       }
     }
     

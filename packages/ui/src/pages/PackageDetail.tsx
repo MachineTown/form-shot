@@ -5,7 +5,7 @@ import ScreenshotViewer from '../components/screenshots/ScreenshotViewer';
 import { useGetAnalysesQuery } from '../store/services/firestoreApi';
 
 const PackageDetail: React.FC = () => {
-  const { customerId, studyId, packageName } = useParams();
+  const { customerId, studyId, packageName, language } = useParams();
   const [selectedTab, setSelectedTab] = useState(0);
 
   // Find the specific analysis
@@ -13,6 +13,7 @@ const PackageDetail: React.FC = () => {
     customerId,
     studyId,
     packageName,
+    language,
   });
 
   const analysis = analyses?.[0];
@@ -36,7 +37,7 @@ const PackageDetail: React.FC = () => {
       </Typography>
       
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        {customerId} / {studyId} / {packageName}
+        {customerId} / {studyId} / {packageName} / {language?.toUpperCase()}
       </Typography>
 
       <Paper sx={{ mt: 2 }}>
@@ -57,6 +58,9 @@ const PackageDetail: React.FC = () => {
             <Box>
               <Typography variant="body2">
                 <strong>Analysis Date:</strong> {new Date(analysis.analysisDate.toDate()).toLocaleString()}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Language:</strong> {analysis.language.toUpperCase()}
               </Typography>
               <Typography variant="body2">
                 <strong>URL:</strong> {analysis.url}
