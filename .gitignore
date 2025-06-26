@@ -9,3 +9,5 @@ vite.config.*.timestamp*
 *.tsbuildinfo
 .pnpm-store
 .firebase
+package-lock.json
+yarn.lock
