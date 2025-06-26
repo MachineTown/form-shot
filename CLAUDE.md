@@ -51,6 +51,11 @@
 - if a question contains a div with class starting with SliderTrack - this is a VAS slider. To complete a value and move forward, click on the slider track in the middle, top or bottom to record a value
 -change field processing logic, after the data entry on each field, wait 1 second, then evaluate the form from that question to the end. New conditional questions may appear. For each conditional question that appears, record in the JSON the parent question and the value that was selected. As those questions appear, during the data entry, fill them before the other questions after them.    
 
+*** Multi-language Support ***
+- For languages other than EN - there is an assumption that the form options and buttons and all other behaviours are identical to EN form (including selectors) - only the labels and messages on the display are different between languages for the same tuple - ignore the language and version components - use the customer id, study name, package name only.
+- There must always be an EN analysis for the same forms, before other languages can be analysed. Check firestore at the beginning of analysis - or allow an EN analysis.json to be passed as an option instead - verify that the JSON is for an EN form.
+- Use the EN analysis to navigate the non-EN versions and take the same screenshots.
+
 *** Form reset ***
 - On first opening a URL assess if this is the first form.
 - The first form will only display the ‘next’ button.
@@ -69,9 +74,7 @@
 *** Frontend ***
 Use mui-x community edition component library (https://github.com/mui/mui-x) and mui https://github.com/mui/material-ui
 Use firestore and firebase auth and cloud storage 
-Use tailwind
-Use npm
-Use latest React
+UI technical choices can be found in specs/ui-tech.md
 
 *** Screenshots ***
 - The analyse tool should allow a specification of the viewport - default should be 767px x 1024px

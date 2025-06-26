@@ -28,6 +28,7 @@ program
   .argument('<url>', 'URL of the survey form to analyze')
   .argument('<tuple>', 'Tuple string in format: [customer_id,study_id,package_name,language,version]')
   .option('--nav-delay <seconds>', 'Pause in seconds before clicking navigation buttons (default: 3)', '3')
+  .option('--en-baseline <path>', 'Path to EN analysis.json file to use as baseline for non-EN analysis')
   .action(async (url: string, tupleString: string, options) => {
     try {
       // Parse the tuple string
@@ -37,8 +38,11 @@ program
       logger.info(`Starting analysis of ${url}`);
       logger.info(`Tuple: ${JSON.stringify(tuple)}`);
       logger.info(`Navigation delay: ${options.navDelay} seconds`);
+      if (options.enBaseline) {
+        logger.info(`Using EN baseline from: ${options.enBaseline}`);
+      }
       
-      await analyzeSurvey(url, tuple, navDelay);
+      await analyzeSurvey(url, tuple, navDelay, options.enBaseline);
     } catch (error) {
       logger.error('Analysis failed:', error);
       process.exit(1);
