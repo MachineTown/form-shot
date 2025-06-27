@@ -141,16 +141,13 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
     fields: typeof primaryFields,
     fieldsLoading: boolean,
     language: string,
-    form: typeof primaryForm
+    form: typeof primaryForm,
+    isRightColumn: boolean = false
   ) => {
     if (!form) return null;
 
     return (
       <Box sx={{ width: '100%', overflow: 'hidden' }}>
-        {/* Language Header */}
-        <Typography variant="h6" gutterBottom sx={{ textTransform: 'uppercase' }}>
-          {language}
-        </Typography>
         
         {/* On-Entry/On-Exit Screenshots */}
         {(form.onEntryScreenshotUrl || form.onExitScreenshotUrl) && (
@@ -335,12 +332,17 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
       }}>
         {/* Primary Language (Left Column) */}
         <Box>
+          {/* Add spacing to align with right column tabs */}
+          {secondaryLanguages.length > 1 && (
+            <Box sx={{ height: 48, mb: 2 }} />
+          )}
           {renderLanguageSection(
             primaryData,
             primaryFields,
             primaryFieldsLoading,
             primaryLanguage,
-            primaryForm
+            primaryForm,
+            false
           )}
         </Box>
 
@@ -373,7 +375,8 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
               secondaryFields,
               secondaryFieldsLoading,
               selectedSecondaryLanguage,
-              secondaryForm
+              secondaryForm,
+              true
             )}
           </Box>
         )}
