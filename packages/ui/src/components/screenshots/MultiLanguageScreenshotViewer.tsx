@@ -41,6 +41,7 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   const [selectedFormIndex, setSelectedFormIndex] = useState(0);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [selectedSecondaryLanguage, setSelectedSecondaryLanguage] = useState<string>('');
   const [selectedImage, setSelectedImage] = useState<{ url: string; language: string } | null>(null);
   const [imageZoom, setImageZoom] = useState(1);
@@ -48,12 +49,20 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
   // Get non-primary languages for the tab panel
   const secondaryLanguages = availableLanguages.filter(lang => lang !== primaryLanguage);
   
-  // Set initial secondary language
+  // Set initial language selections
   useEffect(() => {
-    if (secondaryLanguages.length > 0 && !selectedSecondaryLanguage) {
-      setSelectedSecondaryLanguage(secondaryLanguages[0]);
+    if (isMobile) {
+      // On mobile, show primary language by default
+      if (!selectedLanguage) {
+        setSelectedLanguage(primaryLanguage);
+      }
+    } else {
+      // On desktop, set initial secondary language
+      if (secondaryLanguages.length > 0 && !selectedSecondaryLanguage) {
+        setSelectedSecondaryLanguage(secondaryLanguages[0]);
+      }
     }
-  }, [secondaryLanguages, selectedSecondaryLanguage]);
+  }, [secondaryLanguages, selectedSecondaryLanguage, selectedLanguage, isMobile, primaryLanguage]);
 
   // Get primary language analysis data
   const primaryAnalysis = analysesMap.get(primaryLanguage);
@@ -62,11 +71,11 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
     { skip: !primaryAnalysis }
   );
 
-  // Get secondary language analysis data
-  const secondaryAnalysis = analysesMap.get(selectedSecondaryLanguage);
-  const { data: secondaryData, isLoading: secondaryLoading } = useGetAnalysisWithFormsQuery(
-    secondaryAnalysis?.id || '',
-    { skip: !secondaryAnalysis }
+  // Get selected language data for mobile view
+  const selectedAnalysis = isMobile ? analysesMap.get(selectedLanguage) : analysesMap.get(selectedSecondaryLanguage);
+  const { data: selectedData, isLoading: selectedLoading } = useGetAnalysisWithFormsQuery(
+    selectedAnalysis?.id || '',
+    { skip: !selectedAnalysis }
   );
 
   // Get fields for primary language
@@ -76,19 +85,23 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
     { skip: !primaryForm || !primaryAnalysis }
   );
 
-  // Get fields for secondary language
-  const secondaryForm = secondaryData?.forms[selectedFormIndex];
-  const { data: secondaryFields, isLoading: secondaryFieldsLoading } = useGetFormFieldsQuery(
-    { analysisId: secondaryAnalysis?.id || '', formId: secondaryForm?.id || '' },
-    { skip: !secondaryForm || !secondaryAnalysis }
+  // Get fields for selected language (mobile) or secondary language (desktop)
+  const selectedForm = selectedData?.forms[selectedFormIndex];
+  const { data: selectedFields, isLoading: selectedFieldsLoading } = useGetFormFieldsQuery(
+    { analysisId: selectedAnalysis?.id || '', formId: selectedForm?.id || '' },
+    { skip: !selectedForm || !selectedAnalysis }
   );
 
   const handleFormTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setSelectedFormIndex(newValue);
   };
 
-  const handleSecondaryLanguageChange = (event: React.SyntheticEvent, newValue: string) => {
-    setSelectedSecondaryLanguage(newValue);
+  const handleLanguageChange = (event: React.SyntheticEvent, newValue: string) => {
+    if (isMobile) {
+      setSelectedLanguage(newValue);
+    } else {
+      setSelectedSecondaryLanguage(newValue);
+    }
   };
 
   const handleImageClick = (url: string, language: string) => {
@@ -119,7 +132,7 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
     document.body.removeChild(link);
   };
 
-  if (primaryLoading || (selectedSecondaryLanguage && secondaryLoading)) {
+  if (primaryLoading || (selectedAnalysis && selectedLoading)) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
         <CircularProgress />
@@ -304,7 +317,7 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
   };
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', maxWidth: '100vw', overflow: 'hidden' }}>
       {/* Form Tabs */}
       <Paper sx={{ mb: 2 }}>
         <Tabs
@@ -323,64 +336,107 @@ const MultiLanguageScreenshotViewer: React.FC<MultiLanguageScreenshotViewerProps
         </Tabs>
       </Paper>
 
-      {/* Side by Side Layout */}
-      <Box sx={{ 
-        display: isMobile ? 'block' : 'grid', 
-        gridTemplateColumns: '1fr 1fr',
-        gap: 2,
-        alignItems: 'start',
-      }}>
-        {/* Primary Language (Left Column) */}
+      {isMobile ? (
+        // Mobile Layout - All languages in tabs
         <Box>
-          {/* Add spacing to align with right column tabs */}
-          {secondaryLanguages.length > 1 && (
-            <Box sx={{ height: 48, mb: 2 }} />
-          )}
-          {renderLanguageSection(
-            primaryData,
-            primaryFields,
-            primaryFieldsLoading,
-            primaryLanguage,
-            primaryForm,
-            false
-          )}
-        </Box>
-
-        {/* Secondary Languages (Right Column) */}
-        {secondaryLanguages.length > 0 && (
-          <Box>
-            {/* Language Tabs (only if more than one secondary language) */}
-            {secondaryLanguages.length > 1 && (
-              <Paper sx={{ mb: 2 }}>
-                <Tabs
-                  value={selectedSecondaryLanguage}
-                  onChange={handleSecondaryLanguageChange}
-                  variant="scrollable"
-                  scrollButtons="auto"
-                >
-                  {secondaryLanguages.map((lang) => (
-                    <Tab
-                      key={lang}
-                      value={lang}
-                      label={lang.toUpperCase()}
-                    />
-                  ))}
-                </Tabs>
-              </Paper>
-            )}
+          {/* Language Tabs */}
+          <Paper sx={{ mb: 2 }}>
+            <Tabs
+              value={selectedLanguage}
+              onChange={handleLanguageChange}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {availableLanguages.map((lang) => (
+                <Tab
+                  key={lang}
+                  value={lang}
+                  label={lang.toUpperCase()}
+                />
+              ))}
+            </Tabs>
+          </Paper>
+          
+          {/* Selected Language Content */}
+          {selectedLanguage && (() => {
+            const analysis = analysesMap.get(selectedLanguage);
+            const form = selectedData?.forms[selectedFormIndex];
+            const fields = selectedLanguage === primaryLanguage ? primaryFields : selectedFields;
+            const fieldsLoading = selectedLanguage === primaryLanguage ? primaryFieldsLoading : selectedFieldsLoading;
             
-            {/* Secondary Language Content */}
-            {selectedSecondaryLanguage && secondaryData && renderLanguageSection(
-              secondaryData,
-              secondaryFields,
-              secondaryFieldsLoading,
-              selectedSecondaryLanguage,
-              secondaryForm,
-              true
+            return renderLanguageSection(
+              selectedData || primaryData,
+              fields,
+              fieldsLoading,
+              selectedLanguage,
+              form,
+              false
+            );
+          })()}
+        </Box>
+      ) : (
+        // Desktop Layout - Side by side
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr 1fr',
+          gap: 2,
+          alignItems: 'start',
+          width: '100%',
+          maxWidth: '100%',
+          overflow: 'hidden',
+        }}>
+          {/* Primary Language (Left Column) */}
+          <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+            {/* Add spacing to align with right column tabs */}
+            {secondaryLanguages.length > 1 && (
+              <Box sx={{ height: 48, mb: 2 }} />
+            )}
+            {renderLanguageSection(
+              primaryData,
+              primaryFields,
+              primaryFieldsLoading,
+              primaryLanguage,
+              primaryForm,
+              false
             )}
           </Box>
-        )}
-      </Box>
+
+          {/* Secondary Languages (Right Column) */}
+          {secondaryLanguages.length > 0 && (
+            <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+              {/* Language Tabs (only if more than one secondary language) */}
+              {secondaryLanguages.length > 1 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Tabs
+                    value={selectedSecondaryLanguage}
+                    onChange={handleLanguageChange}
+                    variant="scrollable"
+                    scrollButtons="auto"
+                  >
+                    {secondaryLanguages.map((lang) => (
+                      <Tab
+                        key={lang}
+                        value={lang}
+                        label={lang.toUpperCase()}
+                      />
+                    ))}
+                  </Tabs>
+                </Paper>
+              )}
+              
+              {/* Secondary Language Content */}
+              {selectedSecondaryLanguage && selectedData && renderLanguageSection(
+                selectedData,
+                selectedFields,
+                selectedFieldsLoading,
+                selectedSecondaryLanguage,
+                selectedForm,
+                true
+              )}
+            </Box>
+          )}
+        </Box>
+      )}
 
       {/* Full Screen Dialog */}
       <Dialog
