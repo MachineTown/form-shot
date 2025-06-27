@@ -195,7 +195,17 @@ export class SurveyFormDetector {
         // Remove question number from the beginning
         cleanText = cleanText.replace(/^\d+(?:\.\d+)*\.?\s*/, '');
         
-        // Remove choice values from the end of question text first (before checking for *)
+        // Check if question is required BEFORE removing choices
+        // Look for asterisk at the end of the text OR after common patterns like "Check all that apply *"
+        const isRequired = text.includes('*') && (
+          text.trim().endsWith('*') || 
+          /\*\s*(?:"|\u201C|$)/.test(text) || // asterisk followed by quote or end
+          /apply\s*\*/.test(text) || // "apply *" pattern
+          /required\s*\*/i.test(text) || // "required *" pattern
+          /\*\s*[A-Z]/.test(text) // asterisk followed by capital letter (start of choices)
+        );
+        
+        // Remove choice values from the end of question text
         if (choices && choices.length > 0) {
           // Remove choices from the end, trying longest matches first
           const sortedChoices = [...choices].sort((a, b) => b.length - a.length);
@@ -210,11 +220,8 @@ export class SurveyFormDetector {
           cleanText = cleanText.replace(/\s+/g, ' ').trim();
         }
         
-        // Check if question is required (ends with *) - do this after choice removal
-        const isRequired = cleanText.trim().endsWith('*');
-        if (isRequired) {
-          cleanText = cleanText.replace(/\s*\*\s*$/, '').trim();
-        }
+        // Remove any remaining asterisks from the cleaned text
+        cleanText = cleanText.replace(/\s*\*\s*/g, ' ').trim();
         
         return { cleanText: cleanText.trim(), isRequired };
       }
@@ -222,6 +229,27 @@ export class SurveyFormDetector {
       function getInputType(input: Element): string {
         if (input.tagName === 'SELECT') return 'dropdown';
         if (input.tagName === 'TEXTAREA') return 'textarea';
+        
+        // Check for custom dropdown implementations
+        if (input.tagName === 'INPUT') {
+          // Check if ID contains "Dropdown" indicating a custom dropdown
+          if (input.id && input.id.toLowerCase().includes('dropdown')) {
+            return 'dropdown';
+          }
+          
+          // Check for common dropdown indicators in placeholder or value
+          const inputEl = input as HTMLInputElement;
+          if (inputEl.placeholder?.toLowerCase().includes('select') || 
+              inputEl.value?.toLowerCase() === 'select...') {
+            return 'dropdown';
+          }
+          
+          // Check for dropdown-related class names
+          const classNames = input.className?.toLowerCase() || '';
+          if (classNames.includes('dropdown') || classNames.includes('select')) {
+            return 'dropdown';
+          }
+        }
         
         const type = (input as HTMLInputElement).type?.toLowerCase();
         return type || 'text';

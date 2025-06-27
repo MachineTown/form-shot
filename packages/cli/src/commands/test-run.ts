@@ -534,37 +534,111 @@ async function applyRadioValue(page: any, field: any, testCase: any): Promise<vo
   // For radio buttons, value is typically the position/index
   const radioIndex = typeof testCase.value === 'number' ? testCase.value : parseInt(testCase.value);
   
-  logger.info(`Attempting to select radio button for field ${field.questionNumber} with index ${radioIndex}`);
+  logger.info(`Attempting to select radio button for field ${field.questionNumber || 'NO_NUMBER'} with index ${radioIndex}`);
   logger.debug(`Field cardBoxSelector: ${field.cardBoxSelector}`);
   
-  // First, try question number-based approach if cardBoxSelector is generic
-  if (field.cardBoxSelector === '#survey-body-container [class*="CardBox"]' || 
-      field.cardBoxSelector.endsWith('[class*="CardBox"]')) {
+  // First, try question number-based approach if cardBoxSelector is generic AND we have a question number
+  if (field.questionNumber && field.questionNumber.trim() !== '' && 
+      (field.cardBoxSelector === '#survey-body-container [class*="CardBox"]' || 
+       field.cardBoxSelector.endsWith('[class*="CardBox"]'))) {
     logger.info(`Using question number-based approach for field ${field.questionNumber} due to generic selector`);
     
     // Try to find the specific CardBox by question number
     const result = await page.evaluate((questionNum: string, radioIdx: number) => {
       const cardBoxes = document.querySelectorAll('#survey-body-container [class*="CardBox"]');
-      for (const cardBox of cardBoxes) {
-        const text = cardBox.textContent || '';
-        // Look for the question number at the start of the text content
-        if (text.includes(questionNum) && text.indexOf(questionNum) < 50) {
+      const debugInfo: any[] = [];
+      
+      for (let i = 0; i < cardBoxes.length; i++) {
+        const cardBox = cardBoxes[i];
+        // Look for question number more precisely
+        const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+        let foundQuestion = false;
+        let foundText = '';
+        let foundMatch = '';
+        
+        for (const elem of textElements) {
+          const text = elem.textContent?.trim() || '';
+          // Try multiple patterns for question numbers
+          const patterns = [
+            /^(\d+\.?\d*\.?)\s/, // Original pattern: "1. " or "1.2. "
+            /^(\d+\.?\d*\.?)$/, // Just the number: "1" or "1.2"
+            /^(\d+)\.\s/, // Simple pattern: "1. "
+            /^Question\s+(\d+\.?\d*\.?)/, // "Question 1"
+          ];
+          
+          for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) {
+              const matchedNum = match[1] || match[0];
+              debugInfo.push({
+                cardBoxIndex: i,
+                text: text.substring(0, 50),
+                pattern: pattern.toString(),
+                matchedNum,
+                targetNum: questionNum,
+                isMatch: matchedNum === questionNum || matchedNum === questionNum.replace(/\.$/, '')
+              });
+              
+              if (matchedNum === questionNum || matchedNum === questionNum.replace(/\.$/, '')) {
+                foundQuestion = true;
+                foundText = text;
+                foundMatch = matchedNum;
+                break;
+              }
+            }
+          }
+          if (foundQuestion) break;
+        }
+        
+        if (foundQuestion) {
           // Found the right CardBox, now find radio buttons
           const radios = cardBox.querySelectorAll('input[type="radio"]');
           if (radios.length > radioIdx) {
             const radio = radios[radioIdx] as HTMLInputElement;
             radio.scrollIntoView({ block: 'center' });
             radio.click();
-            return { clicked: true, count: radios.length, found: true };
+            return { 
+              clicked: true, 
+              count: radios.length, 
+              found: true, 
+              questionNum,
+              foundText,
+              foundMatch,
+              debugInfo
+            };
           }
-          return { clicked: false, count: radios.length, found: true };
+          return { 
+            clicked: false, 
+            count: radios.length, 
+            found: true, 
+            questionNum,
+            foundText,
+            foundMatch,
+            debugInfo
+          };
         }
       }
-      return { clicked: false, count: 0, found: false };
+      return { 
+        clicked: false, 
+        count: 0, 
+        found: false, 
+        questionNum,
+        debugInfo,
+        totalCardBoxes: cardBoxes.length
+      };
     }, field.questionNumber, radioIndex);
+    
+    // Log debug info
+    if (result.debugInfo && result.debugInfo.length > 0) {
+      logger.debug(`Question matching debug info for "${field.questionNumber}":`);
+      result.debugInfo.forEach((info: any) => {
+        logger.debug(`  CardBox ${info.cardBoxIndex}: "${info.text}" | Pattern: ${info.pattern} | Matched: "${info.matchedNum}" | IsMatch: ${info.isMatch}`);
+      });
+    }
     
     if (result.found) {
       logger.info(`Found specific CardBox for question ${field.questionNumber} with ${result.count} radio buttons`);
+      logger.info(`  Matched text: "${result.foundText?.substring(0, 50)}..."`);
       if (result.clicked) {
         logger.info(`Successfully selected radio button ${radioIndex} using question number approach`);
         
@@ -572,10 +646,95 @@ async function applyRadioValue(page: any, field: any, testCase: any): Promise<vo
         await new Promise(resolve => setTimeout(resolve, 200));
         return;
       } else {
-        logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox`);
+        logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox for question ${field.questionNumber}`);
       }
     } else {
       logger.warn(`Could not find CardBox for question ${field.questionNumber} using question number approach`);
+      logger.warn(`  Total CardBoxes found: ${result.totalCardBoxes}`);
+      
+      // Debug: log all visible questions with more detail
+      const visibleQuestions = await page.evaluate(() => {
+        const cardBoxes = document.querySelectorAll('#survey-body-container [class*="CardBox"]');
+        const questions: any[] = [];
+        cardBoxes.forEach((cardBox: Element, index: number) => {
+          const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+          const firstTexts: string[] = [];
+          let questionFound = false;
+          
+          for (let i = 0; i < Math.min(5, textElements.length); i++) {
+            const text = textElements[i].textContent?.trim() || '';
+            if (text) {
+              firstTexts.push(`${textElements[i].tagName}: "${text.substring(0, 30)}"`);
+              const match = text.match(/^(\d+\.?\d*\.?)/);
+              if (match && !questionFound) {
+                questions.push({
+                  cardBoxIndex: index,
+                  questionNumber: match[1],
+                  fullText: text.substring(0, 50),
+                  tagName: textElements[i].tagName
+                });
+                questionFound = true;
+              }
+            }
+          }
+          
+          if (!questionFound) {
+            questions.push({
+              cardBoxIndex: index,
+              questionNumber: 'NOT_FOUND',
+              firstTexts: firstTexts
+            });
+          }
+        });
+        return questions;
+      });
+      
+      logger.info(`Detailed CardBox analysis:`);
+      visibleQuestions.forEach((q: any) => {
+        if (q.questionNumber === 'NOT_FOUND') {
+          logger.info(`  CardBox ${q.cardBoxIndex}: No question number found. First texts: ${q.firstTexts?.join(' | ')}`);
+        } else {
+          logger.info(`  CardBox ${q.cardBoxIndex}: Question "${q.questionNumber}" in ${q.tagName} - "${q.fullText}"`);
+        }
+      });
+    }
+  }
+  
+  // If we have no question number and a generic selector, try position-based approach
+  if ((!field.questionNumber || field.questionNumber.trim() === '') && 
+      (field.cardBoxSelector === '#survey-body-container [class*="CardBox"]' || 
+       field.cardBoxSelector.endsWith('[class*="CardBox"]'))) {
+    logger.info(`Using position-based approach for field without question number`);
+    
+    // Try to find CardBox by position in form
+    const fieldIndex = field.order || field.fieldIndex || field.index || 0; // Use order property
+    const result = await page.evaluate((fieldIdx: number, radioIdx: number) => {
+      const cardBoxes = document.querySelectorAll('#survey-body-container [class*="CardBox"]');
+      if (fieldIdx < cardBoxes.length) {
+        const cardBox = cardBoxes[fieldIdx];
+        const radios = cardBox.querySelectorAll('input[type="radio"]');
+        if (radios.length > radioIdx) {
+          const radio = radios[radioIdx] as HTMLInputElement;
+          radio.scrollIntoView({ block: 'center' });
+          radio.click();
+          return { clicked: true, count: radios.length, found: true };
+        }
+        return { clicked: false, count: radios.length, found: true };
+      }
+      return { clicked: false, count: 0, found: false, totalCardBoxes: cardBoxes.length };
+    }, fieldIndex, radioIndex);
+    
+    if (result.found) {
+      logger.info(`Found CardBox at position ${fieldIndex} with ${result.count} radio buttons`);
+      if (result.clicked) {
+        logger.info(`Successfully selected radio button ${radioIndex} using position-based approach`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return;
+      } else {
+        logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox at position ${fieldIndex}`);
+      }
+    } else {
+      logger.warn(`Could not find CardBox at position ${fieldIndex} (total CardBoxes: ${result.totalCardBoxes})`);
     }
   }
   

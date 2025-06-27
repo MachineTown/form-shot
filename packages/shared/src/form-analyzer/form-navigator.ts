@@ -75,29 +75,41 @@ export class FormNavigator {
     // Check if this form needs at least one field filled for navigation
     const navButtons = await this.detectNavigationButtons(page);
     const hasNextButton = navButtons.some(b => b.type === 'next');
-    const needsAtLeastOneField = hasNextButton && fields.length > 0 && filledQuestions.size === 0;
+    const initiallyEmpty = filledQuestions.size === 0;
+    const needsAtLeastOneField = hasNextButton && fields.length > 0 && initiallyEmpty;
     
     // Process fields in order, checking for new conditional fields after each one
-    for (const field of allFields) {
+    logger.info(`Processing ${allFields.length} fields total`);
+    for (let i = 0; i < allFields.length; i++) {
+      const field = allFields[i];
       // Skip if already filled (including conditional fields filled immediately)
-      if (filledQuestions.has(field.questionNumber)) {
+      const fieldKey = field.questionNumber || `no_number_${i}`;
+      logger.info(`Checking field ${i}: key="${fieldKey}", type="${field.inputType}", required=${field.isRequired}`);
+      if (filledQuestions.has(fieldKey)) {
+        logger.info(`  Field ${fieldKey} already filled, skipping`);
         continue;
       }
       
       // Check if field is required or VAS (VAS needs interaction even if not required)
       // OR if we need at least one field filled for navigation
-      if (!field.isRequired && field.inputType !== 'VAS' && !needsAtLeastOneField) {
+      const shouldFillOptional = needsAtLeastOneField && filledQuestions.size === 0;
+      if (!field.isRequired && field.inputType !== 'VAS' && !shouldFillOptional) {
+        logger.info(`Skipping field ${field.questionNumber || 'NO_NUMBER'} - not required (type: ${field.inputType})`);
         continue;
       }
+      
+      logger.info(`Processing required field ${field.questionNumber || 'NO_NUMBER'} (type: ${field.inputType}, required: ${field.isRequired})`);
+      logger.info(`  Field selector: ${field.selector}`);
+      logger.info(`  CardBox selector: ${field.cardBoxSelector}`);
       
       try {
         // Record state before filling
         const questionsBefore = await this.getVisibleQuestions(page);
         
         // Fill the field
-        logger.info(`Filling field ${field.questionNumber} (${field.inputType})`);
+        logger.info(`Filling field ${field.questionNumber || 'NO_NUMBER'} (${field.inputType})`);
         const filledValue = await this.fillFieldAndGetValue(page, field);
-        filledQuestions.add(field.questionNumber);
+        filledQuestions.add(fieldKey);
         
         // Wait for any conditional fields to appear
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -170,10 +182,9 @@ export class FormNavigator {
         throw error;
       }
       
-      // If we filled at least one field, we don't need to force fill anymore
-      if (needsAtLeastOneField && filledQuestions.size > 0) {
-        break;
-      }
+      // Don't break here - continue to fill all required fields
+      // The needsAtLeastOneField logic is only to ensure we fill at least one field
+      // for navigation, but we should still fill all required fields
     }
     
     // If we still haven't filled any fields but we have a next button and fields, fill the first field
@@ -213,16 +224,26 @@ export class FormNavigator {
           return;
         }
         
-        // Find question number
+        // Find question number or use a placeholder for unnumbered questions
         const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+        let questionId = '';
         for (const elem of textElements) {
           const text = elem.textContent?.trim() || '';
           const match = text.match(/^(\d+\.?\d*\.?)/);
           if (match) {
-            visibleQuestions.push(match[1]);
+            questionId = match[1];
             break;
           }
         }
+        
+        // If no question number found, use a unique identifier based on position
+        if (!questionId) {
+          const allCardBoxes = Array.from(container.querySelectorAll('[class*="CardBox"]'));
+          const position = allCardBoxes.indexOf(cardBox);
+          questionId = `no_number_${position}`;
+        }
+        
+        visibleQuestions.push(questionId);
       });
       
       return visibleQuestions;
@@ -476,14 +497,85 @@ export class FormNavigator {
         // Approach 1: Try to use the cardBoxSelector to find all radios in the question
         if (field.cardBoxSelector && !radioSelected) {
           try {
-            // For conditional fields with generic selector, find by question number
-            if (field.conditionalInfo?.isConditional && field.cardBoxSelector === '[class*="CardBox"]') {
-              // Use page.evaluate directly to find and click the radio button
-              const result = await page.evaluate((questionNum: string, radioIdx: number) => {
+            // For fields with generic selector, find by question number or position
+            if ((field.conditionalInfo?.isConditional || !field.questionNumber || field.questionNumber.trim() === '') && 
+                field.cardBoxSelector === '[class*="CardBox"]') {
+              
+              // If no question number, use broader approach to find radio fields
+              if (!field.questionNumber || field.questionNumber.trim() === '') {
+                logger.info('Field has no question number, attempting to find radio buttons by input type');
+                
+                // Try to find all radio button groups on the page
+                const result = await page.evaluate((radioIdx: number) => {
+                  const container = document.querySelector('#survey-body-container');
+                  if (!container) return { clicked: false, count: 0, found: false };
+                  
+                  // Find all CardBoxes with radio buttons
+                  const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+                  const radioCardBoxes = [];
+                  
+                  for (const cardBox of cardBoxes) {
+                    const radios = cardBox.querySelectorAll('input[type="radio"]');
+                    if (radios.length > 0) {
+                      radioCardBoxes.push({ cardBox, radios });
+                    }
+                  }
+                  
+                  // Assuming this is the second question (index 1) which has radio buttons
+                  if (radioCardBoxes.length > 1) {
+                    const targetRadios = radioCardBoxes[1].radios;
+                    if (targetRadios.length > radioIdx) {
+                      const radio = targetRadios[radioIdx] as HTMLInputElement;
+                      radio.scrollIntoView({ block: 'center' });
+                      radio.click();
+                      return { clicked: true, count: targetRadios.length, found: true, totalGroups: radioCardBoxes.length };
+                    }
+                    return { clicked: false, count: targetRadios.length, found: true, totalGroups: radioCardBoxes.length };
+                  } else if (radioCardBoxes.length === 1) {
+                    // Only one radio group, use it
+                    const targetRadios = radioCardBoxes[0].radios;
+                    if (targetRadios.length > radioIdx) {
+                      const radio = targetRadios[radioIdx] as HTMLInputElement;
+                      radio.scrollIntoView({ block: 'center' });
+                      radio.click();
+                      return { clicked: true, count: targetRadios.length, found: true, totalGroups: 1 };
+                    }
+                  }
+                  
+                  return { clicked: false, count: 0, found: false, totalGroups: radioCardBoxes.length };
+                }, radioIndex);
+                
+                if (result.found) {
+                  logger.info(`Found ${result.totalGroups} radio button groups, selected from group with ${result.count} radio buttons`);
+                  if (result.clicked) {
+                    radioSelected = true;
+                    logger.info(`Selected radio button ${radioIndex} for field without question number`);
+                  } else {
+                    logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found`);
+                  }
+                } else {
+                  logger.warn(`Could not find any radio button groups on the page`);
+                }
+              } else {
+                // Use page.evaluate directly to find and click the radio button by question number
+                const result = await page.evaluate((questionNum: string, radioIdx: number) => {
                 const cardBoxes = document.querySelectorAll('#survey-body-container [class*="CardBox"]');
                 for (const cardBox of cardBoxes) {
-                  const text = cardBox.textContent || '';
-                  if (text.includes(questionNum)) {
+                  // Look for question number more precisely
+                  const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+                  let foundQuestion = false;
+                  
+                  for (const elem of textElements) {
+                    const text = elem.textContent?.trim() || '';
+                    // Match question number at the beginning of the text
+                    const match = text.match(/^(\d+\.?\d*\.?)\s/);
+                    if (match && match[1] === questionNum) {
+                      foundQuestion = true;
+                      break;
+                    }
+                  }
+                  
+                  if (foundQuestion) {
                     // Found the right CardBox, now find radio buttons
                     const radios = cardBox.querySelectorAll('input[type="radio"]');
                     if (radios.length > radioIdx) {
@@ -498,16 +590,17 @@ export class FormNavigator {
                 return { clicked: false, count: 0, found: false };
               }, field.questionNumber, radioIndex);
               
-              if (result.found) {
-                logger.info(`Found specific CardBox for question ${field.questionNumber} with ${result.count} radio buttons`);
-                if (result.clicked) {
-                  radioSelected = true;
-                  logger.info(`Selected radio button ${radioIndex} for conditional field using specific CardBox`);
+                if (result.found) {
+                  logger.info(`Found specific CardBox for question ${field.questionNumber} with ${result.count} radio buttons`);
+                  if (result.clicked) {
+                    radioSelected = true;
+                    logger.info(`Selected radio button ${radioIndex} for conditional field using specific CardBox`);
+                  } else {
+                    logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox`);
+                  }
                 } else {
-                  logger.warn(`Could not click radio ${radioIndex} - only ${result.count} radios found in CardBox`);
+                  logger.warn(`Could not find CardBox for question ${field.questionNumber}`);
                 }
-              } else {
-                logger.warn(`Could not find CardBox for question ${field.questionNumber}`);
               }
             } else {
               // Original approach for non-conditional fields
@@ -606,6 +699,37 @@ export class FormNavigator {
         }
         break;
         
+      case 'checkbox':
+        // For checkboxes, select the first one
+        try {
+          logger.info(`Attempting to fill checkbox field with selector: ${field.selector}`);
+          
+          // If we have a specific selector, try to click it
+          if (field.selector && !field.selector.includes('[type="checkbox"]')) {
+            // Selector might be for a specific checkbox
+            await page.click(field.selector);
+            logger.info(`Clicked checkbox using direct selector: ${field.selector}`);
+          } else {
+            // Find checkboxes in the CardBox
+            const checkboxSelector = field.cardBoxSelector ? 
+              `${field.cardBoxSelector} input[type="checkbox"]` : 
+              `input[type="checkbox"]`;
+            
+            const checkboxes = await page.$$(checkboxSelector);
+            if (checkboxes.length > 0) {
+              // Click the first checkbox
+              await checkboxes[0].click();
+              logger.info(`Clicked first checkbox out of ${checkboxes.length} checkboxes`);
+            } else {
+              logger.warn(`No checkboxes found with selector: ${checkboxSelector}`);
+            }
+          }
+        } catch (error) {
+          logger.error(`Failed to fill checkbox field: ${error}`);
+          throw error;
+        }
+        break;
+        
       case 'VAS':
         // For VAS sliders, click at the middle position
         try {
@@ -681,7 +805,57 @@ export class FormNavigator {
       case 'dropdown':
         // For dropdowns, select by index
         const dropdownIndex = typeof testValue === 'number' ? testValue : 0;
-        await page.select(field.selector, field.choices?.[dropdownIndex] || '');
+        
+        try {
+          // First try native select element
+          await page.select(field.selector, field.choices?.[dropdownIndex] || '');
+          logger.info(`Selected dropdown option ${dropdownIndex} using native select`);
+        } catch (error) {
+          // If that fails, it's likely a custom dropdown
+          logger.info(`Native select failed, trying custom dropdown approach for ${field.selector}`);
+          
+          try {
+            // Click the dropdown to open it
+            await page.click(field.selector);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Look for dropdown options - they might be in a separate container
+            const optionSelected = await page.evaluate((dropdownIdx) => {
+              // Common patterns for dropdown options
+              const optionSelectors = [
+                '[role="option"]',
+                '[class*="option"]',
+                '[class*="dropdown-item"]',
+                '[class*="select-item"]',
+                'li[role="option"]',
+                'div[role="option"]'
+              ];
+              
+              for (const selector of optionSelectors) {
+                const options = document.querySelectorAll(selector);
+                if (options.length > dropdownIdx) {
+                  const option = options[dropdownIdx] as HTMLElement;
+                  option.click();
+                  return true;
+                }
+              }
+              
+              return false;
+            }, dropdownIndex);
+            
+            if (!optionSelected) {
+              logger.warn(`Could not find dropdown options for ${field.selector}`);
+              // As a fallback, type the value if we have choices
+              if (field.choices && field.choices[dropdownIndex]) {
+                await page.type(field.selector, field.choices[dropdownIndex]);
+              }
+            } else {
+              logger.info(`Selected dropdown option ${dropdownIndex} using custom dropdown`);
+            }
+          } catch (customError) {
+            logger.error(`Failed to handle custom dropdown: ${customError}`);
+          }
+        }
         break;
         
       case 'checkbox':
