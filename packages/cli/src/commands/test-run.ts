@@ -454,6 +454,10 @@ async function applyTestCaseValue(page: any, field: any, testCase: any): Promise
       await applyTextValue(page, field, testCase);
       break;
       
+    case 'date':
+      await applyDateValue(page, field, testCase);
+      break;
+      
     case 'textarea':
       await applyTextareaValue(page, field, testCase);
       break;
@@ -925,6 +929,184 @@ async function applyCheckboxValue(page: any, field: any, testCase: any): Promise
   }
   
   logger.debug(`Set checkbox to ${shouldCheck} for field ${field.questionNumber}`);
+}
+
+async function applyDateValue(page: any, field: any, testCase: any): Promise<void> {
+  const dateSelector = `${field.cardBoxSelector} input[type="date"]`;
+  
+  logger.info(`Handling date field ${field.questionNumber} for test case ${testCase.id}`);
+  
+  try {
+    // Click the date input to open date picker
+    await page.click(dateSelector);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Determine the date to use
+    let targetDate: Date;
+    if (testCase.value === 'yesterday' || !testCase.value) {
+      // Default to yesterday for required date fields
+      targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() - 1);
+    } else if (testCase.value === 'today') {
+      targetDate = new Date();
+    } else if (testCase.value === 'tomorrow') {
+      targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + 1);
+    } else {
+      // Try to parse the provided date value
+      targetDate = new Date(testCase.value);
+      if (isNaN(targetDate.getTime())) {
+        // If invalid date, default to yesterday
+        targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() - 1);
+      }
+    }
+    
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth(); // 0-indexed
+    const day = targetDate.getDate();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthName = monthNames[month];
+    
+    logger.info(`Selecting date: ${monthName} ${day}, ${year}`);
+    
+    // Handle the specific MonthYearDropdownWrapper structure
+    try {
+      // Find the MonthYearDropdownWrapper
+      const dropdownWrapper = await page.$('[class*="MonthYearDropdownWrapper"]');
+      if (dropdownWrapper) {
+        // Get the two divs inside
+        const divs = await dropdownWrapper.$$('div');
+        
+        if (divs.length >= 2) {
+          // Click the first div (month selector)
+          logger.info('Clicking month selector div');
+          await divs[0].click();
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Clear and type the month name
+          await page.keyboard.down('Control');
+          await page.keyboard.press('A');
+          await page.keyboard.up('Control');
+          await page.keyboard.type(monthName);
+          await page.keyboard.press('Enter');
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Click the second div (year selector)
+          logger.info('Clicking year selector div');
+          await divs[1].click();
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Clear and type the year
+          await page.keyboard.down('Control');
+          await page.keyboard.press('A');
+          await page.keyboard.up('Control');
+          await page.keyboard.type(String(year));
+          await page.keyboard.press('Enter');
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Now select the day from the calendar
+          const daySelected = await page.evaluate((targetDay: number) => {
+            // Look for day buttons in the calendar
+            const daySelectors = [
+              `[aria-label*="${targetDay}"]`,
+              `[class*="day"]:not([class*="outside-month"]):not([class*="disabled"])`,
+              `.react-datepicker__day--0${targetDay < 10 ? '0' : ''}${targetDay}:not(.react-datepicker__day--outside-month)`,
+              `[role="button"][aria-label*="${targetDay}"]`,
+              `button:not([disabled])`
+            ];
+            
+            for (const selector of daySelectors) {
+              const dayElements = document.querySelectorAll(selector);
+              for (const dayElement of dayElements) {
+                const elementText = dayElement.textContent?.trim();
+                if (elementText === String(targetDay)) {
+                  // Make sure it's not disabled or outside current month
+                  const isDisabled = dayElement.classList.contains('disabled') || 
+                                   dayElement.hasAttribute('disabled') ||
+                                   dayElement.classList.contains('outside-month') ||
+                                   dayElement.classList.contains('react-datepicker__day--outside-month');
+                  
+                  if (!isDisabled) {
+                    (dayElement as HTMLElement).click();
+                    return true;
+                  }
+                }
+              }
+            }
+            
+            // If exact match not found, try to find any clickable day element
+            const allDayButtons = document.querySelectorAll('.react-datepicker__day:not(.react-datepicker__day--outside-month)');
+            for (const dayBtn of allDayButtons) {
+              if (dayBtn.textContent?.trim() === String(targetDay)) {
+                (dayBtn as HTMLElement).click();
+                return true;
+              }
+            }
+            
+            return false;
+          }, day);
+          
+          if (daySelected) {
+            logger.info(`Successfully selected date using MonthYearDropdownWrapper`);
+          } else {
+            logger.warn(`Could not find day ${day} in calendar`);
+            
+            // Try alternative approach - look for the specific day number
+            await page.evaluate((targetDay: number) => {
+              const dayElements = document.querySelectorAll('[class*="day"]');
+              for (const elem of dayElements) {
+                if (elem.textContent?.trim() === String(targetDay) && 
+                    !elem.classList.contains('outside-month') &&
+                    !elem.classList.contains('disabled')) {
+                  (elem as HTMLElement).click();
+                  return;
+                }
+              }
+            }, day);
+          }
+        } else {
+          logger.warn(`MonthYearDropdownWrapper found but doesn't have 2 divs`);
+        }
+      } else {
+        logger.warn(`MonthYearDropdownWrapper not found`);
+        
+        // Fallback: Try to find any date picker elements
+        const fallbackResult = await page.evaluate((targetYear: number, targetMonth: number, targetDay: number) => {
+          // Try various date picker patterns
+          const pickerElement = document.querySelector('.react-datepicker, [class*="datepicker"], [role="dialog"]');
+          if (!pickerElement) return { success: false, message: 'No date picker found' };
+          
+          // Look for any clickable day elements
+          const dayElements = pickerElement.querySelectorAll('[class*="day"], button, [role="button"]');
+          for (const elem of dayElements) {
+            if (elem.textContent?.trim() === String(targetDay)) {
+              (elem as HTMLElement).click();
+              return { success: true, message: 'Clicked day using fallback' };
+            }
+          }
+          
+          return { success: false, message: 'Could not find day element' };
+        }, year, month, day);
+        
+        if (fallbackResult.success) {
+          logger.info(`Date selected using fallback approach: ${fallbackResult.message}`);
+        } else {
+          logger.warn(`Fallback date selection failed: ${fallbackResult.message}`);
+        }
+      }
+    } catch (dropdownError) {
+      logger.error(`Error with date picker interaction:`, dropdownError);
+    }
+    
+    // Wait for date picker to close
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    logger.debug(`Applied date value for field ${field.questionNumber}`);
+  } catch (error) {
+    logger.error(`Failed to handle date field ${field.questionNumber}:`, error);
+  }
 }
 
 async function checkValidationMessages(page: any, field: any): Promise<{triggered: boolean, messages: string[]}> {

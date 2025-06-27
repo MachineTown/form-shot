@@ -224,24 +224,31 @@ export class TestDataGenerator {
         testCases: [
           {
             type: 'valid',
-            valueType: 'static',
-            value: '2024-01-15',
-            description: 'ISO date format',
+            valueType: 'pattern',
+            value: 'yesterday',
+            description: 'Yesterday\'s date (default for required fields)',
             weight: 10
           },
           {
             type: 'valid',
-            valueType: 'static',
-            value: '01/15/2024',
-            description: 'US date format',
+            valueType: 'pattern',
+            value: 'today',
+            description: 'Today\'s date',
             weight: 9
           },
           {
             type: 'valid',
+            valueType: 'pattern',
+            value: 'tomorrow',
+            description: 'Tomorrow\'s date',
+            weight: 8
+          },
+          {
+            type: 'valid',
             valueType: 'static',
-            value: '15/01/2024',
-            description: 'European date format',
-            weight: 9
+            value: '2024-01-15',
+            description: 'ISO date format',
+            weight: 7
           },
           {
             type: 'edge',

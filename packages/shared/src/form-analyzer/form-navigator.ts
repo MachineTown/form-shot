@@ -480,6 +480,115 @@ export class FormNavigator {
         await page.type(field.selector, String(testValue));
         break;
         
+      case 'date':
+        // For date fields, click to open date picker and select yesterday
+        logger.info(`Handling date field ${field.questionNumber}`);
+        try {
+          // Click the date input to open date picker
+          await page.click(field.selector);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Calculate yesterday's date
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const year = yesterday.getFullYear();
+          const month = yesterday.getMonth(); // 0-indexed
+          const day = yesterday.getDate();
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+          const monthName = monthNames[month];
+          
+          logger.info(`Selecting date: ${monthName} ${day}, ${year} (yesterday)`);
+          
+          // Handle the specific MonthYearDropdownWrapper structure
+          try {
+            // Find the MonthYearDropdownWrapper
+            const dropdownWrapper = await page.$('[class*="MonthYearDropdownWrapper"]');
+            if (dropdownWrapper) {
+              // Get the two divs inside
+              const divs = await dropdownWrapper.$$('div');
+              
+              if (divs.length >= 2) {
+                // Click the first div (month selector)
+                logger.info('Clicking month selector div');
+                await divs[0].click();
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Clear and type the month name
+                await page.keyboard.down('Control');
+                await page.keyboard.press('A');
+                await page.keyboard.up('Control');
+                await page.keyboard.type(monthName);
+                await page.keyboard.press('Enter');
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Click the second div (year selector)
+                logger.info('Clicking year selector div');
+                await divs[1].click();
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Clear and type the year
+                await page.keyboard.down('Control');
+                await page.keyboard.press('A');
+                await page.keyboard.up('Control');
+                await page.keyboard.type(String(year));
+                await page.keyboard.press('Enter');
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Now select the day from the calendar
+                const daySelected = await page.evaluate((targetDay) => {
+                  // Look for day buttons in the calendar
+                  const daySelectors = [
+                    `[aria-label*="${targetDay}"]`,
+                    `[class*="day"]:not([class*="outside-month"]):not([class*="disabled"])`,
+                    `.react-datepicker__day--0${targetDay < 10 ? '0' : ''}${targetDay}:not(.react-datepicker__day--outside-month)`,
+                    `[role="button"][aria-label*="${targetDay}"]`,
+                    `button:not([disabled])`
+                  ];
+                  
+                  for (const selector of daySelectors) {
+                    const dayElements = document.querySelectorAll(selector);
+                    for (const dayElement of dayElements) {
+                      const elementText = dayElement.textContent?.trim();
+                      if (elementText === String(targetDay)) {
+                        // Make sure it's not disabled or outside current month
+                        const isDisabled = dayElement.classList.contains('disabled') || 
+                                         dayElement.hasAttribute('disabled') ||
+                                         dayElement.classList.contains('outside-month');
+                        
+                        if (!isDisabled) {
+                          (dayElement as HTMLElement).click();
+                          return true;
+                        }
+                      }
+                    }
+                  }
+                  return false;
+                }, day);
+                
+                if (daySelected) {
+                  logger.info(`Successfully selected date using MonthYearDropdownWrapper`);
+                } else {
+                  logger.warn(`Could not find day ${day} in calendar`);
+                }
+              } else {
+                logger.warn(`MonthYearDropdownWrapper found but doesn't have 2 divs`);
+              }
+            } else {
+              logger.warn(`MonthYearDropdownWrapper not found, trying alternative approach`);
+            }
+          } catch (dropdownError) {
+            logger.error(`Error with MonthYearDropdownWrapper approach:`, dropdownError);
+          }
+          
+          // Wait for date picker to close
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+        } catch (error) {
+          logger.error(`Failed to handle date field ${field.questionNumber}:`, error);
+        }
+        break;
+        
       case 'textarea':
         await page.type(field.selector, String(testValue));
         break;
