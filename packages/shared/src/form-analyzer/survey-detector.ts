@@ -230,15 +230,37 @@ export class SurveyFormDetector {
         if (input.tagName === 'SELECT') return 'dropdown';
         if (input.tagName === 'TEXTAREA') return 'textarea';
         
-        // Check for custom dropdown implementations
+        // Check for custom implementations
         if (input.tagName === 'INPUT') {
+          const inputEl = input as HTMLInputElement;
+          
+          // Check for date field indicators
+          // Look for readonly text inputs with date-related attributes or placeholders
+          if (inputEl.readOnly || inputEl.getAttribute('readonly') === 'true') {
+            // Check for date patterns in placeholder or value
+            const placeholder = inputEl.placeholder?.toLowerCase() || '';
+            const value = inputEl.value?.toLowerCase() || '';
+            const id = inputEl.id?.toLowerCase() || '';
+            const className = inputEl.className?.toLowerCase() || '';
+            const ariaLabel = inputEl.getAttribute('aria-label')?.toLowerCase() || '';
+            
+            // Date field indicators
+            if (placeholder.includes('date') || placeholder.includes('dd/mm/yyyy') || 
+                placeholder.includes('mm/dd/yyyy') || placeholder.includes('yyyy-mm-dd') ||
+                value.includes('date') || 
+                id.includes('date') || 
+                className.includes('date') || className.includes('datepicker') ||
+                ariaLabel.includes('date')) {
+              return 'date';
+            }
+          }
+          
           // Check if ID contains "Dropdown" indicating a custom dropdown
           if (input.id && input.id.toLowerCase().includes('dropdown')) {
             return 'dropdown';
           }
           
           // Check for common dropdown indicators in placeholder or value
-          const inputEl = input as HTMLInputElement;
           if (inputEl.placeholder?.toLowerCase().includes('select') || 
               inputEl.value?.toLowerCase() === 'select...') {
             return 'dropdown';
@@ -408,6 +430,27 @@ export class SurveyFormDetector {
 
         // Only add if we have meaningful question text or a question number
         if (cleanText.length > 3 || questionNumber.length > 0) {
+          // Additional check: if detected as text but question suggests date field
+          if (inputType === 'text' && nonHiddenInputs.length > 0) {
+            const questionLower = cleanText.toLowerCase();
+            const firstInput = nonHiddenInputs[0] as HTMLInputElement;
+            
+            // Check if this is likely a date field based on question text and input properties
+            if ((questionLower.includes('date') || 
+                 questionLower.includes('when') || 
+                 questionLower.includes('birthday') || 
+                 questionLower.includes('birth') ||
+                 questionLower.includes('dob')) &&
+                (firstInput.readOnly || 
+                 firstInput.getAttribute('readonly') === 'true' ||
+                 firstInput.placeholder?.toLowerCase().includes('date') ||
+                 firstInput.placeholder?.includes('dd') ||
+                 firstInput.placeholder?.includes('mm') ||
+                 firstInput.placeholder?.includes('yyyy'))) {
+              inputType = 'date';
+            }
+          }
+          
           const cardBoxSelector = generateCardBoxSelector(cardBox, index, questionNumber);
           
           fieldGroups.push({
