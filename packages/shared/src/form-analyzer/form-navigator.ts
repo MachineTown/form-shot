@@ -911,6 +911,86 @@ export class FormNavigator {
         }
         break;
         
+      case 'NRS':
+        // Handle Numeric Rating Scale (buttons with numeric values)
+        logger.info(`Handling NRS field ${field.questionNumber}`);
+        try {
+          const nrsIndex = typeof testValue === 'number' ? testValue : 0;
+          
+          // Try multiple strategies to find and click NRS buttons
+          let nrsClicked = false;
+          
+          // Strategy 1: Use cardBox selector to find buttons
+          if (field.cardBoxSelector) {
+            try {
+              const buttons = await page.$$(`${field.cardBoxSelector} button`);
+              logger.info(`Found ${buttons.length} buttons in CardBox`);
+              
+              // Filter for numeric buttons
+              const numericButtons = [];
+              for (let i = 0; i < buttons.length; i++) {
+                const text = await buttons[i].evaluate(el => el.textContent?.trim() || '');
+                if (/^\d+$/.test(text)) {
+                  numericButtons.push({ button: buttons[i], value: parseInt(text), index: i });
+                }
+              }
+              
+              logger.info(`Found ${numericButtons.length} numeric buttons`);
+              
+              if (numericButtons.length > nrsIndex) {
+                // Sort by numeric value
+                numericButtons.sort((a, b) => a.value - b.value);
+                
+                // Click the button at the requested index
+                await numericButtons[nrsIndex].button.evaluate(el => el.scrollIntoView({ block: 'center' }));
+                await numericButtons[nrsIndex].button.click();
+                nrsClicked = true;
+                logger.info(`Clicked NRS button with value ${numericButtons[nrsIndex].value} (index ${nrsIndex})`);
+              }
+            } catch (error) {
+              logger.debug(`CardBox NRS selection failed: ${error}`);
+            }
+          }
+          
+          // Strategy 2: Use direct selector if available
+          if (!nrsClicked && field.selector) {
+            try {
+              // If selector contains button text, extract it
+              const match = field.selector.match(/button:contains\("(\d+)"\)/);
+              if (match) {
+                const targetValue = match[1];
+                const clicked = await page.evaluate((cardBoxSel, targetVal) => {
+                  const cardBox = document.querySelector(cardBoxSel);
+                  if (!cardBox) return false;
+                  
+                  const buttons = cardBox.querySelectorAll('button');
+                  for (const button of buttons) {
+                    if (button.textContent?.trim() === targetVal) {
+                      (button as HTMLElement).click();
+                      return true;
+                    }
+                  }
+                  return false;
+                }, field.cardBoxSelector, targetValue);
+                
+                if (clicked) {
+                  nrsClicked = true;
+                  logger.info(`Clicked NRS button with value ${targetValue} using direct selector`);
+                }
+              }
+            } catch (error) {
+              logger.debug(`Direct NRS selector failed: ${error}`);
+            }
+          }
+          
+          if (!nrsClicked) {
+            logger.error(`Could not click NRS button for field ${field.questionNumber}`);
+          }
+        } catch (error) {
+          logger.error(`Failed to handle NRS field ${field.questionNumber}:`, error);
+        }
+        break;
+        
       case 'dropdown':
         // For dropdowns, select by index
         const dropdownIndex = typeof testValue === 'number' ? testValue : 0;

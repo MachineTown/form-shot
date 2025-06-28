@@ -22,7 +22,7 @@ export interface SurveyForm {
 export interface SurveyField {
   questionNumber: string;
   questionText: string;
-  inputType: 'text' | 'radio' | 'dropdown' | 'checkbox' | 'textarea' | 'number' | 'date' | 'email' | 'phone' | 'url' | 'VAS';
+  inputType: 'text' | 'radio' | 'dropdown' | 'checkbox' | 'textarea' | 'number' | 'date' | 'email' | 'phone' | 'url' | 'VAS' | 'NRS';
   isRequired: boolean;
   choices?: string[];
   screenshotPath: string;

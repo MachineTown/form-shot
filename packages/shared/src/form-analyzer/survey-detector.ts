@@ -167,6 +167,9 @@ export class SurveyFormDetector {
                 return NodeFilter.FILTER_REJECT;
               }
               
+              // Don't skip button text - it might contain important labels or asterisks
+              // We'll handle button text removal later if needed
+              
               return NodeFilter.FILTER_ACCEPT;
             }
           }
@@ -198,15 +201,7 @@ export class SurveyFormDetector {
         // Check if question is required BEFORE removing choices
         // Look for asterisk at the end of the text OR after common patterns like "Check all that apply *"
         // Also check for asterisk in parentheses like "( MM/dd/yyyy )*"
-        const isRequired = text.includes('*') && (
-          text.trim().endsWith('*') || 
-          /\*\s*(?:"|\u201C|$)/.test(text) || // asterisk followed by quote or end
-          /apply\s*\*/.test(text) || // "apply *" pattern
-          /required\s*\*/i.test(text) || // "required *" pattern
-          /\*\s*[A-Z]/.test(text) || // asterisk followed by capital letter (start of choices)
-          /\)\s*\*/.test(text) || // asterisk after closing parenthesis
-          /\*\s*\)/.test(text) // asterisk before closing parenthesis
-        );
+        const isRequired = text.includes('*');
         
         // Remove choice values from the end of question text
         if (choices && choices.length > 0) {
@@ -221,6 +216,13 @@ export class SurveyFormDetector {
           
           // Clean up multiple spaces
           cleanText = cleanText.replace(/\s+/g, ' ').trim();
+        }
+        
+        // For NRS fields, also clean up standalone numeric values but preserve asterisk
+        if (text.includes('0') && text.includes('10')) {
+          // This looks like an NRS scale, remove standalone numbers but keep asterisk
+          // Be careful not to remove asterisk that might be near numbers
+          cleanText = cleanText.replace(/\b(\d+)\b(?!\s*\*)/g, '').replace(/\s+/g, ' ').trim();
         }
         
         // Remove any remaining asterisks from the cleaned text
@@ -294,6 +296,25 @@ export class SurveyFormDetector {
         return !!sliderTrack;
       }
 
+      function detectNRS(container: Element): boolean {
+        // Check if this question contains an NRS (Numeric Rating Scale)
+        // Look for multiple buttons with numeric labels (0-10, 0-11, etc.)
+        const buttons = container.querySelectorAll('button');
+        if (buttons.length < 2 || buttons.length > 12) return false;
+        
+        // Check if buttons have numeric labels
+        let numericCount = 0;
+        buttons.forEach(button => {
+          const text = button.textContent?.trim() || '';
+          if (/^\d+$/.test(text)) {
+            numericCount++;
+          }
+        });
+        
+        // If most buttons are numeric, it's likely an NRS
+        return numericCount >= buttons.length * 0.8;
+      }
+
       function getChoices(input: Element, container: Element): string[] {
         if (input.tagName === 'SELECT') {
           const options = Array.from(input.querySelectorAll('option'));
@@ -360,6 +381,26 @@ export class SurveyFormDetector {
         return `[class*="SliderTrack"]:nth-of-type(${index + 1})`;
       }
 
+      function generateNRSSelector(button: Element, index: number): string {
+        if (button.id) {
+          try {
+            return `#${CSS.escape(button.id)}`;
+          } catch (e) {
+            return `[id="${button.id}"]`;
+          }
+        }
+        
+        // Get the button text to use in selector
+        const buttonText = button.textContent?.trim() || '';
+        if (/^\d+$/.test(buttonText)) {
+          // If it's a numeric button, use the number in the selector
+          return `button:contains("${buttonText}")`;
+        }
+        
+        // Fallback to nth-of-type
+        return `button:nth-of-type(${index + 1})`;
+      }
+
       const rightPanel = document.querySelector(selector);
       if (!rightPanel) {
         return [];
@@ -374,15 +415,17 @@ export class SurveyFormDetector {
         const rawQuestionText = extractQuestionText(cardBox);
         const questionNumber = extractQuestionNumber(rawQuestionText);
         
-        // Check if this is a VAS slider first
+        
+        // Check if this is a VAS slider or NRS first
         const isVASSlider = detectVASSlider(cardBox);
+        const isNRS = detectNRS(cardBox);
         
         // Find all inputs within this CardBox
         const questionInputs = cardBox.querySelectorAll('input, select, textarea');
         const nonHiddenInputs = Array.from(questionInputs).filter(inp => (inp as HTMLInputElement).type !== 'hidden');
         
-        // For VAS sliders, we might not have traditional inputs, so don't skip if it's a VAS slider
-        if (nonHiddenInputs.length === 0 && !isVASSlider) return; // Skip if no visible inputs and not a VAS slider
+        // For VAS sliders or NRS, we might not have traditional inputs, so don't skip
+        if (nonHiddenInputs.length === 0 && !isVASSlider && !isNRS) return; // Skip if no visible inputs and not a special component
         
         let inputType = 'text';
         let choices: string[] = [];
@@ -394,6 +437,27 @@ export class SurveyFormDetector {
           const sliderTrack = cardBox.querySelector('[class*="SliderTrack"]');
           if (sliderTrack) {
             elementSelector = generateSliderSelector(sliderTrack, index);
+          }
+        } else if (isNRS) {
+          // Handle NRS (Numeric Rating Scale)
+          inputType = 'NRS';
+          const buttons = cardBox.querySelectorAll('button');
+          choices = [];
+          
+          // Collect numeric button values
+          buttons.forEach(button => {
+            const text = button.textContent?.trim() || '';
+            if (/^\d+$/.test(text)) {
+              choices.push(text);
+            }
+          });
+          
+          // Sort choices numerically
+          choices.sort((a, b) => parseInt(a) - parseInt(b));
+          
+          // Use the first button as selector base
+          if (buttons.length > 0) {
+            elementSelector = generateNRSSelector(buttons[0], index);
           }
         } else if (nonHiddenInputs.length === 1) {
           // Single input - use its type and selector
@@ -437,7 +501,8 @@ export class SurveyFormDetector {
         }
 
         // Clean the question text by removing number, choices, and handling required indicator
-        const { cleanText, isRequired } = cleanQuestionText(rawQuestionText, choices);
+        // For NRS fields, don't pass choices to cleanQuestionText to preserve asterisk detection
+        const { cleanText, isRequired } = cleanQuestionText(rawQuestionText, inputType === 'NRS' ? [] : choices);
 
         // Only add if we have meaningful question text or a question number
         if (cleanText.length > 3 || questionNumber.length > 0) {

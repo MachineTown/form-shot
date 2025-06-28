@@ -438,6 +438,10 @@ async function applyTestCaseValue(page: any, field: any, testCase: any): Promise
       await applyVASValue(page, field, testCase);
       break;
       
+    case 'nrs':
+      await applyNRSValue(page, field, testCase);
+      break;
+      
     case 'radio':
       await applyRadioValue(page, field, testCase);
       break;
@@ -532,6 +536,57 @@ async function applyVASValue(page: any, field: any, testCase: any): Promise<void
   await page.mouse.click(clickX, clickY);
   
   logger.debug(`Clicked VAS slider at position (${Math.round(clickX)}, ${Math.round(clickY)}) with value "${testCase.value}" for field ${field.questionNumber}`);
+}
+
+async function applyNRSValue(page: any, field: any, testCase: any): Promise<void> {
+  // For NRS (Numeric Rating Scale), find and click the appropriate button
+  const buttonIndex = typeof testCase.value === 'number' ? testCase.value : parseInt(testCase.value);
+  
+  logger.info(`Attempting to click NRS button for field ${field.questionNumber} with index ${buttonIndex}`);
+  
+  try {
+    // Find all buttons in the CardBox
+    const buttonSelector = `${field.cardBoxSelector} button`;
+    const buttons = await page.$$(buttonSelector);
+    
+    logger.debug(`Found ${buttons.length} buttons in CardBox for NRS field`);
+    
+    // Get button texts and find numeric ones
+    const numericButtons = [];
+    for (let i = 0; i < buttons.length; i++) {
+      const text = await buttons[i].evaluate((el: any) => el.textContent?.trim() || '');
+      if (/^\d+$/.test(text)) {
+        numericButtons.push({ button: buttons[i], value: parseInt(text), originalIndex: i });
+      }
+    }
+    
+    logger.debug(`Found ${numericButtons.length} numeric buttons for NRS field`);
+    
+    if (numericButtons.length === 0) {
+      throw new Error(`No numeric buttons found for NRS field ${field.questionNumber}`);
+    }
+    
+    // Sort by numeric value
+    numericButtons.sort((a, b) => a.value - b.value);
+    
+    // Select the button at the requested index
+    if (buttonIndex >= 0 && buttonIndex < numericButtons.length) {
+      const targetButton = numericButtons[buttonIndex];
+      
+      // Scroll button into view
+      await targetButton.button.evaluate((el: any) => el.scrollIntoView({ block: 'center' }));
+      
+      // Click the button
+      await targetButton.button.click();
+      
+      logger.info(`Clicked NRS button with value ${targetButton.value} (index ${buttonIndex}) for field ${field.questionNumber}`);
+    } else {
+      throw new Error(`Invalid button index ${buttonIndex} for NRS field with ${numericButtons.length} buttons`);
+    }
+  } catch (error) {
+    logger.error(`Failed to apply NRS value for field ${field.questionNumber}:`, error);
+    throw error;
+  }
 }
 
 async function applyRadioValue(page: any, field: any, testCase: any): Promise<void> {

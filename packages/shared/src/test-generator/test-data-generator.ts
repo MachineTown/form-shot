@@ -426,6 +426,52 @@ export class TestDataGenerator {
         }
       },
       {
+        id: 'nrs_scale_v1',
+        fieldType: 'NRS',
+        version: '1.0.0',
+        description: 'Numeric Rating Scale (NRS) test cases',
+        testCases: [
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '0',
+            description: 'First option (lowest rating)',
+            weight: 10,
+            position: 0
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '1',
+            description: 'Second option',
+            weight: 8,
+            position: 1
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '2',
+            description: 'Middle-low option',
+            weight: 9,
+            position: 2
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '-1',
+            description: 'Last option (highest rating)',
+            weight: 10,
+            position: -1
+          }
+        ],
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          author: 'system',
+          tags: ['NRS', 'numeric', 'rating', 'scale', 'buttons']
+        }
+      },
+      {
         id: 'vas_slider_v1',
         fieldType: 'VAS',
         version: '1.0.0',
@@ -523,6 +569,11 @@ export class TestDataGenerator {
       return this.generateVASTestCases(field, detection);
     }
 
+    // Handle NRS (Numeric Rating Scale) specifically
+    if (field.inputType === 'NRS') {
+      return this.generateNRSTestCases(field, detection);
+    }
+
     // Use template-based generation for other field types
     const templateId = detection.template || `${detection.fieldType}_validation_v1`;
     const template = this.templates.get(templateId) || this.templates.get('general_text_v1')!;
@@ -547,6 +598,50 @@ export class TestDataGenerator {
       const testCase = this.createTestCaseFromTemplate(templateCase, field, index);
       testCases.push(testCase);
     });
+
+    return testCases;
+  }
+
+  private generateNRSTestCases(field: SurveyField, detection: DetectionResult): TestCase[] {
+    const testCases: TestCase[] = [];
+    
+    // For NRS, generate test cases based on the actual choices (numeric buttons)
+    if (field.choices && field.choices.length > 0) {
+      // Use position-based selection similar to radio/dropdown
+      field.choices.forEach((choice, index) => {
+        testCases.push({
+          id: `nrs_${field.questionNumber.replace('.', '_')}_${index}`,
+          type: index === 0 ? 'boundary' : (index === field.choices!.length - 1 ? 'boundary' : 'valid'),
+          value: index.toString(),
+          position: index,
+          description: `Button ${choice} (position ${index})`,
+          source: 'generated',
+          provenance: {
+            createdBy: 'system',
+            createdAt: new Date().toISOString(),
+            generator: {
+              algorithm: 'nrs_position_generator',
+              version: '1.0.0',
+              template: 'nrs_scale_v1',
+              confidence: detection.confidence
+            },
+            modifications: []
+          },
+          status: 'draft',
+          quality: {
+            confidence: detection.confidence,
+            reviewCount: 0
+          }
+        });
+      });
+    } else {
+      // Fallback to template if no choices detected
+      const template = this.templates.get('nrs_scale_v1')!;
+      template.testCases.forEach((templateCase, index) => {
+        const testCase = this.createTestCaseFromTemplate(templateCase, field, index);
+        testCases.push(testCase);
+      });
+    }
 
     return testCases;
   }
