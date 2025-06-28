@@ -197,12 +197,15 @@ export class SurveyFormDetector {
         
         // Check if question is required BEFORE removing choices
         // Look for asterisk at the end of the text OR after common patterns like "Check all that apply *"
+        // Also check for asterisk in parentheses like "( MM/dd/yyyy )*"
         const isRequired = text.includes('*') && (
           text.trim().endsWith('*') || 
           /\*\s*(?:"|\u201C|$)/.test(text) || // asterisk followed by quote or end
           /apply\s*\*/.test(text) || // "apply *" pattern
           /required\s*\*/i.test(text) || // "required *" pattern
-          /\*\s*[A-Z]/.test(text) // asterisk followed by capital letter (start of choices)
+          /\*\s*[A-Z]/.test(text) || // asterisk followed by capital letter (start of choices)
+          /\)\s*\*/.test(text) || // asterisk after closing parenthesis
+          /\*\s*\)/.test(text) // asterisk before closing parenthesis
         );
         
         // Remove choice values from the end of question text
@@ -235,22 +238,30 @@ export class SurveyFormDetector {
           const inputEl = input as HTMLInputElement;
           
           // Check for date field indicators
-          // Look for readonly text inputs with date-related attributes or placeholders
+          // Check for date patterns in various attributes
+          const placeholder = inputEl.placeholder?.toLowerCase() || '';
+          const value = inputEl.value?.toLowerCase() || '';
+          const id = inputEl.id?.toLowerCase() || '';
+          const className = inputEl.className?.toLowerCase() || '';
+          const ariaLabel = inputEl.getAttribute('aria-label')?.toLowerCase() || '';
+          const name = inputEl.name?.toLowerCase() || '';
+          
+          // Date field indicators - check even if not readonly as some date pickers work on regular text inputs
+          if (placeholder.includes('date') || placeholder.includes('dd/mm/yyyy') || 
+              placeholder.includes('mm/dd/yyyy') || placeholder.includes('yyyy-mm-dd') ||
+              placeholder.includes('dd-mm-yyyy') ||
+              value.includes('date') || 
+              id.includes('date') || 
+              name.includes('date') ||
+              className.includes('date') || className.includes('datepicker') ||
+              ariaLabel.includes('date')) {
+            return 'date';
+          }
+          
+          // Additional check for readonly inputs that might be other custom widgets
           if (inputEl.readOnly || inputEl.getAttribute('readonly') === 'true') {
-            // Check for date patterns in placeholder or value
-            const placeholder = inputEl.placeholder?.toLowerCase() || '';
-            const value = inputEl.value?.toLowerCase() || '';
-            const id = inputEl.id?.toLowerCase() || '';
-            const className = inputEl.className?.toLowerCase() || '';
-            const ariaLabel = inputEl.getAttribute('aria-label')?.toLowerCase() || '';
-            
-            // Date field indicators
-            if (placeholder.includes('date') || placeholder.includes('dd/mm/yyyy') || 
-                placeholder.includes('mm/dd/yyyy') || placeholder.includes('yyyy-mm-dd') ||
-                value.includes('date') || 
-                id.includes('date') || 
-                className.includes('date') || className.includes('datepicker') ||
-                ariaLabel.includes('date')) {
+            // Could be a date picker even without explicit date indicators
+            if (placeholder.includes('/') || placeholder.includes('-')) {
               return 'date';
             }
           }
@@ -433,14 +444,19 @@ export class SurveyFormDetector {
           // Additional check: if detected as text but question suggests date field
           if (inputType === 'text' && nonHiddenInputs.length > 0) {
             const questionLower = cleanText.toLowerCase();
+            const rawTextLower = rawQuestionText.toLowerCase();
             const firstInput = nonHiddenInputs[0] as HTMLInputElement;
             
             // Check if this is likely a date field based on question text and input properties
+            // Also check the raw text for date format patterns
             if ((questionLower.includes('date') || 
                  questionLower.includes('when') || 
                  questionLower.includes('birthday') || 
                  questionLower.includes('birth') ||
-                 questionLower.includes('dob')) &&
+                 questionLower.includes('dob') ||
+                 rawTextLower.includes('mm/dd/yyyy') ||
+                 rawTextLower.includes('dd/mm/yyyy') ||
+                 rawTextLower.includes('yyyy-mm-dd')) ||
                 (firstInput.readOnly || 
                  firstInput.getAttribute('readonly') === 'true' ||
                  firstInput.placeholder?.toLowerCase().includes('date') ||
