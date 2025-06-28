@@ -84,48 +84,53 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
       if (!isLastForm) {
         // Fill required fields and navigate to next form
         try {
-          logger.info('Filling required fields...');
-          const allFields = await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
-          
-          // Update form fields to include any conditional fields that were discovered
-          form.fields = allFields;
-          
-          // Take screenshots for any conditional fields that don't have them yet
-          for (const field of allFields) {
-            if (!field.screenshotPath && field.conditionalInfo?.isConditional) {
-              // Check if field is actually visible before taking screenshot
-              const isVisible = await puppeteerManager.getPage().evaluate((selector) => {
-                const element = document.querySelector(selector);
-                if (!element) return false;
+          // Check if this is an informational form (no fields)
+          if (form.fields.length === 0) {
+            logger.info('Informational form detected (no input fields) - proceeding to navigation');
+          } else {
+            logger.info('Filling required fields...');
+            const allFields = await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
+            
+            // Update form fields to include any conditional fields that were discovered
+            form.fields = allFields;
+            
+            // Take screenshots for any conditional fields that don't have them yet
+            for (const field of allFields) {
+              if (!field.screenshotPath && field.conditionalInfo?.isConditional) {
+                // Check if field is actually visible before taking screenshot
+                const isVisible = await puppeteerManager.getPage().evaluate((selector) => {
+                  const element = document.querySelector(selector);
+                  if (!element) return false;
+                  
+                  const style = window.getComputedStyle(element);
+                  const htmlElement = element as HTMLElement;
+                  return style.display !== 'none' && 
+                         style.visibility !== 'hidden' && 
+                         style.opacity !== '0' &&
+                         htmlElement.offsetHeight > 0 && 
+                         htmlElement.offsetWidth > 0;
+                }, field.cardBoxSelector);
                 
-                const style = window.getComputedStyle(element);
-                const htmlElement = element as HTMLElement;
-                return style.display !== 'none' && 
-                       style.visibility !== 'hidden' && 
-                       style.opacity !== '0' &&
-                       htmlElement.offsetHeight > 0 && 
-                       htmlElement.offsetWidth > 0;
-              }, field.cardBoxSelector);
-              
-              if (isVisible) {
-                logger.info(`Taking screenshot for conditional field ${field.questionNumber}`);
-                const screenshot = await screenshotService.takeFieldScreenshot(
-                  puppeteerManager.getPage(), 
-                  field, 
-                  allFields.indexOf(field), 
-                  tuple,
-                  formIndex
-                );
-                if (screenshot) {
-                  field.screenshotPath = screenshot;
+                if (isVisible) {
+                  logger.info(`Taking screenshot for conditional field ${field.questionNumber}`);
+                  const screenshot = await screenshotService.takeFieldScreenshot(
+                    puppeteerManager.getPage(), 
+                    field, 
+                    allFields.indexOf(field), 
+                    tuple,
+                    formIndex
+                  );
+                  if (screenshot) {
+                    field.screenshotPath = screenshot;
+                  }
+                } else {
+                  logger.warn(`Skipping screenshot for conditional field ${field.questionNumber} - element not visible (selector: ${field.cardBoxSelector})`);
                 }
-              } else {
-                logger.warn(`Skipping screenshot for conditional field ${field.questionNumber} - element not visible (selector: ${field.cardBoxSelector})`);
               }
             }
           }
           
-          // Take on-exit screenshot before navigation
+          // Take on-exit screenshot before navigation (for all forms, including informational)
           logger.info('Taking on-exit screenshot before navigation...');
           const onExitScreenshot = await screenshotService.takeOnExitScreenshot(puppeteerManager.getPage(), form, formIndex, tuple);
           if (onExitScreenshot) {

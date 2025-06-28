@@ -1076,7 +1076,10 @@ export class FormNavigator {
         '.modal',
         '[class*="modal"]',
         '[class*="popup"]',
-        '[class*="alert"]'
+        '[class*="alert"]',
+        '[class*="Dialog"]',
+        '[class*="Modal"]',
+        '[class*="Popup"]'
       ];
       
       for (const selector of modalSelectors) {
@@ -1089,9 +1092,45 @@ export class FormNavigator {
           
           if (isVisible) {
             logger.debug(`Validation modal detected with selector: ${selector}`);
+            
+            // Try to get the modal content for better debugging
+            const modalContent = await page.evaluate((el) => {
+              return el.textContent?.trim().substring(0, 200);
+            }, modal);
+            logger.warn(`Modal content: ${modalContent}`);
+            
             return true;
           }
         }
+      }
+      
+      // Also check for inline validation errors that might block navigation
+      const hasInlineErrors = await page.evaluate(() => {
+        const errorSelectors = [
+          '[class*="error-message"]',
+          '[class*="errorMessage"]',
+          '[class*="validation-error"]',
+          '[class*="field-error"]',
+          '.error',
+          '.invalid-feedback',
+          '[aria-invalid="true"]'
+        ];
+        
+        for (const selector of errorSelectors) {
+          const errors = document.querySelectorAll(selector);
+          for (const error of errors) {
+            const element = error as HTMLElement;
+            if (element.offsetWidth > 0 && element.offsetHeight > 0 && element.textContent?.trim()) {
+              return true;
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (hasInlineErrors) {
+        logger.warn('Inline validation errors detected on form');
+        return true;
       }
       
       return false;
@@ -1108,10 +1147,38 @@ export class FormNavigator {
       'button[aria-label*="Close"]',
       'button.close',
       '[class*="close-button"]',
-      'button:contains("OK")',
-      'button:contains("Close")'
+      '[class*="closeButton"]',
+      '[class*="dismiss"]',
+      'button[type="button"]:has-text("OK")',
+      'button[type="button"]:has-text("Close")',
+      'button[type="button"]:has-text("Got it")',
+      'button[type="button"]:has-text("Understood")'
     ];
     
+    // First try using Puppeteer's text content search
+    try {
+      const buttons = await page.$$('button');
+      for (const button of buttons) {
+        const text = await page.evaluate(el => el.textContent?.trim(), button);
+        if (text && ['OK', 'Close', 'Got it', 'Understood', 'Dismiss'].includes(text)) {
+          const isVisible = await page.evaluate(el => {
+            const element = el as HTMLElement;
+            return element.offsetWidth > 0 && element.offsetHeight > 0;
+          }, button);
+          
+          if (isVisible) {
+            logger.info(`Clicking modal button with text: ${text}`);
+            await button.click();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('Error finding modal buttons by text:', error);
+    }
+    
+    // Fallback to selector-based approach
     for (const selector of closeSelectors) {
       try {
         const closeButton = await page.$(selector);
@@ -1566,6 +1633,10 @@ export class FormNavigator {
           // Strategy 4: Check if any questions contain different selectors or types
           const hasSliderTrack = surveyBody.querySelector('[class*="SliderTrack"]') !== null;
           
+          // Check if we have an error message or validation that's blocking navigation
+          const errorMessage = surveyBody.querySelector('[class*="error"], [class*="Error"], [class*="alert"], [class*="Alert"]');
+          const hasError = errorMessage !== null;
+          
           return {
             hasNewForm: true, // For now, assume we can transition
             currentFormTitle: currentFormTitle || 'Unknown',
@@ -1573,6 +1644,8 @@ export class FormNavigator {
             questionCount: questions.length,
             questionTexts: questionTexts,
             hasSliderTrack: hasSliderTrack,
+            hasError: hasError,
+            errorText: errorMessage?.textContent?.trim() || '',
             reason: 'Form content available'
           };
         }, previousTitle);
@@ -1581,9 +1654,35 @@ export class FormNavigator {
         logger.info(`Current form: "${transitionResult.currentFormTitle}", Short name: "${transitionResult.currentShortName}"`);
         logger.info(`Questions: ${transitionResult.questionCount}, Has VAS slider: ${transitionResult.hasSliderTrack}`);
         
-        // If we have questions, consider it a valid form
+        // Check for errors
+        if (transitionResult.hasError) {
+          logger.warn(`Error detected on form: ${transitionResult.errorText}`);
+        }
+        
+        // Check if the form title or content has changed
+        const hasFormChanged = transitionResult.currentFormTitle !== previousTitle && 
+                             transitionResult.currentFormTitle !== 'Unknown';
+        
+        // For informational forms: if title changed and we have navigation buttons, that's a valid transition
+        const hasNavButtons = await page.evaluate(() => {
+          const surveyBody = document.querySelector('#survey-body-container');
+          const navigationArea = surveyBody?.nextElementSibling;
+          const buttons = navigationArea?.querySelectorAll('button') || [];
+          return buttons.length > 0;
+        });
+        
+        // Success conditions:
+        // 1. Form has questions (regular form)
+        // 2. Form has no questions but title changed and has nav buttons (informational form)
+        // 3. After several attempts, if we have nav buttons, consider it valid (avoid infinite loops)
         if (transitionResult.questionCount && transitionResult.questionCount > 0) {
-          logger.info('Form transition successful - found questions');
+          logger.info(`Form transition successful - found ${transitionResult.questionCount} questions`);
+          return true;
+        } else if (hasFormChanged && hasNavButtons) {
+          logger.info(`Form transition successful - informational form (title changed: "${transitionResult.currentFormTitle}")`);
+          return true;
+        } else if (attempts >= 5 && hasNavButtons) {
+          logger.info('Form transition assumed successful - has navigation buttons after 5 attempts');
           return true;
         }
         

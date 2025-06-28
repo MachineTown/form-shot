@@ -634,7 +634,11 @@ export class SurveyFormDetector {
       return fieldGroups;
     }, rightPanelSelector);
 
-    logger.info(`Found ${fields.length} survey questions`);
+    if (fields.length === 0) {
+      logger.info('No survey questions found - this appears to be an informational form');
+    } else {
+      logger.info(`Found ${fields.length} survey questions`);
+    }
 
     // Take individual screenshots for each field using new screenshot service
     logger.info(`Taking screenshots for ${fields.length} questions`);
