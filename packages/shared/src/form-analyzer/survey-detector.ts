@@ -27,8 +27,47 @@ export class SurveyFormDetector {
       }
     }, rightPanel);
     
-    // Wait a bit for any animations/rendering
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait longer for any animations/rendering and dynamic content
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Check if any content has been dynamically loaded
+    const dynamicContent = await page.evaluate(() => {
+      const container = document.querySelector('#survey-body-container');
+      if (!container) return { hasSlider: false, sliderInfo: '' };
+      
+      // Look for any slider elements
+      const sliderSelectors = [
+        '[class*="SliderTrack"]',
+        '[class*="slider"]',
+        '[class*="Slider"]',
+        '[class*="vas"]',
+        '[class*="VAS"]',
+        '[role="slider"]',
+        'input[type="range"]',
+        '.slider',
+        '#slider'
+      ];
+      
+      let foundSlider = false;
+      let sliderInfo = '';
+      
+      for (const selector of sliderSelectors) {
+        const elements = container.querySelectorAll(selector);
+        if (elements.length > 0) {
+          foundSlider = true;
+          sliderInfo += `Found ${elements.length} elements with selector: ${selector}. `;
+          // Get some info about the first element
+          if (elements[0]) {
+            const elem = elements[0] as HTMLElement;
+            sliderInfo += `First element: tag=${elem.tagName}, class="${elem.className}", id="${elem.id}". `;
+          }
+        }
+      }
+      
+      return { hasSlider: foundSlider, sliderInfo };
+    });
+    
+    logger.info(`Dynamic content check: hasSlider=${dynamicContent.hasSlider}, info=${dynamicContent.sliderInfo}`);
     
     // Extract form title and short name
     const { longTitle, shortName } = await this.extractFormTitles(page);
@@ -410,15 +449,43 @@ export class SurveyFormDetector {
       const cardBoxElements = rightPanel.querySelectorAll('[class*="CardBox"]');
       const fieldGroups: any[] = [];
 
+      // Also check for standalone VAS sliders that might not be in CardBox
+      const standaloneSliders = rightPanel.querySelectorAll('[class*="SliderTrack"]');
+      console.log(`Found ${standaloneSliders.length} SliderTrack elements in form`);
+      
+      // Also try alternative selectors for VAS sliders
+      const alternativeSliders = rightPanel.querySelectorAll('[class*="slider"], [class*="Slider"], [class*="vas"], [class*="VAS"], [role="slider"]');
+      console.log(`Found ${alternativeSliders.length} alternative slider elements`);
+      
+      const sliderParents = new Set();
+      standaloneSliders.forEach(slider => {
+        // Find the nearest container that's not already a CardBox
+        let parent = slider.parentElement;
+        while (parent && parent !== rightPanel) {
+          if (parent.className && parent.className.includes('CardBox')) {
+            // This slider is already inside a CardBox, will be handled below
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        if (parent && parent !== rightPanel && !parent.className?.includes('CardBox')) {
+          sliderParents.add(slider.parentElement);
+        }
+      });
+
+      // Process CardBox elements first
+      console.log(`Found ${cardBoxElements.length} CardBox elements`);
       cardBoxElements.forEach((cardBox, index) => {
         // Extract question text and number from the CardBox
         const rawQuestionText = extractQuestionText(cardBox);
         const questionNumber = extractQuestionNumber(rawQuestionText);
         
+        console.log(`CardBox ${index}: questionNumber="${questionNumber}", text="${rawQuestionText.substring(0, 50)}..."`);
         
         // Check if this is a VAS slider or NRS first
         const isVASSlider = detectVASSlider(cardBox);
         const isNRS = detectNRS(cardBox);
+        console.log(`CardBox ${index}: isVASSlider=${isVASSlider}, isNRS=${isNRS}`);
         
         // Find all inputs within this CardBox
         const questionInputs = cardBox.querySelectorAll('input, select, textarea');
@@ -629,6 +696,57 @@ export class SurveyFormDetector {
         }
         
         return `#survey-body-container [class*="CardBox"]`;
+      }
+
+      // Process standalone VAS sliders (not in CardBox)
+      // Check both original sliders and alternative selectors
+      const allSliders = [...standaloneSliders, ...alternativeSliders];
+      const uniqueSliders = Array.from(new Set(allSliders)); // Remove duplicates
+      
+      if (uniqueSliders.length > 0 && fieldGroups.length === 0) {
+        console.log(`Processing ${uniqueSliders.length} potential VAS sliders`);
+        // Check if there's a standalone VAS slider on this form
+        uniqueSliders.forEach((slider, index) => {
+          // Find the container for this slider
+          let container = slider.parentElement;
+          while (container && !container.textContent?.trim() && container !== rightPanel) {
+            container = container.parentElement;
+          }
+          
+          if (container && container !== rightPanel) {
+            // Extract any question text near the slider
+            const questionText = extractQuestionText(container);
+            const questionNumber = extractQuestionNumber(questionText) || '';
+            
+            // Clean the question text
+            const { cleanText, isRequired } = cleanQuestionText(questionText, []);
+            
+            // Generate selector for the slider
+            const sliderSelector = generateSliderSelector(slider, index);
+            
+            // Generate container selector
+            let containerSelector = '';
+            if (container.id) {
+              containerSelector = `#${CSS.escape(container.id)}`;
+            } else if (container.className) {
+              const className = container.className.split(' ')[0];
+              containerSelector = `.${className}`;
+            } else {
+              containerSelector = `#survey-body-container > *:nth-child(${Array.from(rightPanel.children).indexOf(container) + 1})`;
+            }
+            
+            fieldGroups.push({
+              questionNumber: questionNumber || 'VAS',
+              questionText: cleanText || 'Visual Analog Scale',
+              inputType: 'VAS',
+              isRequired: isRequired || true, // VAS sliders are typically required
+              choices: undefined,
+              selector: sliderSelector,
+              screenshotPath: '',
+              cardBoxSelector: containerSelector
+            });
+          }
+        });
       }
 
       return fieldGroups;

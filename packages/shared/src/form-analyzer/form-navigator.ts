@@ -1631,7 +1631,23 @@ export class FormNavigator {
           const questionTexts = Array.from(questions).map(q => q.textContent?.trim().substring(0, 50));
           
           // Strategy 4: Check if any questions contain different selectors or types
-          const hasSliderTrack = surveyBody.querySelector('[class*="SliderTrack"]') !== null;
+          const sliderSelectors = [
+            '[class*="SliderTrack"]',
+            '[class*="slider"]',
+            '[class*="Slider"]',
+            '[class*="vas"]',
+            '[class*="VAS"]',
+            '[role="slider"]',
+            'input[type="range"]'
+          ];
+          
+          let hasSliderTrack = false;
+          for (const selector of sliderSelectors) {
+            if (surveyBody.querySelector(selector)) {
+              hasSliderTrack = true;
+              break;
+            }
+          }
           
           // Check if we have an error message or validation that's blocking navigation
           const errorMessage = surveyBody.querySelector('[class*="error"], [class*="Error"], [class*="alert"], [class*="Alert"]');

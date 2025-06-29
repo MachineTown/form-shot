@@ -86,7 +86,49 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
         try {
           // Check if this is an informational form (no fields)
           if (form.fields.length === 0) {
-            logger.info('Informational form detected (no input fields) - proceeding to navigation');
+            logger.info('Form appears to have no input fields - checking if it might be a dynamic form');
+            
+            // Try clicking next to see if it triggers validation or reveals fields
+            logger.info('Attempting navigation to check for dynamic content...');
+            try {
+              await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', 500); // Short delay for test
+              
+              // Check if we got a validation modal
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              const hasModal = await formNavigator.detectValidationModal(puppeteerManager.getPage());
+              
+              if (hasModal) {
+                logger.info('Validation modal appeared - form has hidden required fields');
+                await formNavigator.closeValidationModal(puppeteerManager.getPage());
+                
+                // Re-analyze the form to find the now-visible fields
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const redetectedForm = await formDetector.detectSurveyForm(puppeteerManager.getPage(), tuple, screenshotService, formIndex);
+                
+                if (redetectedForm.fields.length > 0) {
+                  logger.info(`Re-analysis found ${redetectedForm.fields.length} fields - this is a dynamic form`);
+                  form.fields = redetectedForm.fields;
+                  forms[forms.length - 1] = form; // Update the form in the array
+                  
+                  // Fill the fields
+                  const allFields = await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
+                  form.fields = allFields;
+                } else {
+                  logger.info('No fields found even after validation modal - treating as informational form');
+                }
+              } else {
+                // Check if we actually navigated
+                const transitioned = await formNavigator.waitForFormTransition(puppeteerManager.getPage(), form.longTitle);
+                if (transitioned) {
+                  logger.info('Form transitioned without fields - it was truly informational');
+                  // We've already moved to the next form, so continue from there
+                  formIndex++;
+                  continue;
+                }
+              }
+            } catch (error) {
+              logger.warn('Error during dynamic form check:', error);
+            }
           } else {
             logger.info('Filling required fields...');
             const allFields = await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
