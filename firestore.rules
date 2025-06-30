@@ -1,10 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read access to all documents for development
-    // WARNING: This is for development only. Implement proper authentication for production.
-    match /{document=**} {
+    // Function to check if user's email domain is allowed
+    function isAllowedDomain() {
+      let email = request.auth.token.email;
+      let domain = email.split('@')[1];
+      return exists(/databases/$(database)/documents/allowed-domains/$(domain)) &&
+             get(/databases/$(database)/documents/allowed-domains/$(domain)).data.enabled == true;
+    }
+    
+    // Allow anyone to read allowed-domains collection (needed for auth validation)
+    match /allowed-domains/{domain} {
       allow read: if true;
+      allow write: if false;
+    }
+    
+    // All other documents require auth and allowed domain
+    match /{document=**} {
+      allow read: if request.auth != null && isAllowedDomain();
       allow write: if false;
     }
   }

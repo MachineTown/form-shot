@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Function to check if user's email domain is allowed
+    function isAllowedDomain() {
+      let email = request.auth.token.email;
+      let domain = email.split('@')[1];
+      return firestore.exists(/databases/(default)/documents/allowed-domains/$(domain)) &&
+             firestore.get(/databases/(default)/documents/allowed-domains/$(domain)).data.enabled == true;
+    }
+    
+    // Allow read access only to authenticated users from allowed domains
+    // No write access is allowed as per requirements
+    match /{allPaths=**} {
+      allow read: if request.auth != null && isAllowedDomain();
+      allow write: if false;
+    }
+  }
+}

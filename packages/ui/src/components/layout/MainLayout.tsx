@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import {
   Box,
   AppBar,
@@ -8,15 +8,18 @@ import {
   IconButton,
   useTheme,
   useMediaQuery,
+  Button,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
   Brightness4 as DarkModeIcon,
   Brightness7 as LightModeIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useAppSelector, useAppDispatch } from '../../hooks/redux';
 import { toggleTheme } from '../../store/slices/themeSlice';
 import { toggleSidebar } from '../../store/slices/navigationSlice';
+import { useAuth } from '../../hooks/useAuth';
 import Sidebar from './Sidebar';
 
 const DRAWER_WIDTH = 240;
@@ -25,6 +28,8 @@ const APP_BAR_HEIGHT = 64;
 const MainLayout: React.FC = () => {
   const theme = useTheme();
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const themeMode = useAppSelector((state) => state.theme.mode);
   const sidebarOpen = useAppSelector((state) => state.navigation.sidebarOpen);
@@ -35,6 +40,15 @@ const MainLayout: React.FC = () => {
 
   const handleSidebarToggle = () => {
     dispatch(toggleSidebar());
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   return (
@@ -62,13 +76,29 @@ const MainLayout: React.FC = () => {
             Form-Shot Analysis
           </Typography>
 
+          {user && (
+            <Typography variant="body2" sx={{ mr: 2 }}>
+              {user.email}
+            </Typography>
+          )}
+
           <IconButton
             color="inherit"
             aria-label="toggle theme"
             onClick={handleThemeToggle}
+            sx={{ mr: 1 }}
           >
             {themeMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
+
+          <Button
+            color="inherit"
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+            sx={{ textTransform: 'none' }}
+          >
+            Logout
+          </Button>
         </Toolbar>
       </AppBar>
 

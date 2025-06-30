@@ -5,6 +5,7 @@ import { store } from './store';
 import { router } from './router';
 import { lightTheme, darkTheme } from './theme';
 import { useAppSelector } from './hooks/redux';
+import { AuthProvider } from './contexts/AuthContext';
 
 function ThemedApp() {
   const themeMode = useAppSelector((state) => state.theme.mode);
@@ -21,7 +22,9 @@ function ThemedApp() {
 function App() {
   return (
     <Provider store={store}>
-      <ThemedApp />
+      <AuthProvider>
+        <ThemedApp />
+      </AuthProvider>
     </Provider>
   );
 }

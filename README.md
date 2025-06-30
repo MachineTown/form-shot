@@ -416,8 +416,10 @@ To use cloud upload features:
 
 1. Create a Firebase project
 2. Enable Firestore and Storage
-3. Create a service account with admin permissions
-4. Download the service account JSON as `~/firestore.json`
+3. Enable Google Authentication in Firebase Console
+4. Create a service account with admin permissions
+5. Download the service account JSON as `~/firestore.json`
+6. Initialize allowed domains for access control (see Domain-Based Access Control section)
 
 The tool will automatically create collections following this structure:
 - `survey-analyses` - Main analysis documents with metadata
@@ -535,6 +537,39 @@ pnpm ui:build
 # Preview production build locally
 pnpm --filter @form-shot/ui preview
 ```
+
+### Domain-Based Access Control
+
+Form-Shot implements domain-based access control to restrict UI access to specific organizations. Only users with email addresses from whitelisted domains can access the application.
+
+#### Initial Setup
+
+1. Run the initialization script to add allowed domains:
+   ```bash
+   node scripts/init-allowed-domains.js
+   ```
+   This will add `castoredc.com` as the initial allowed domain.
+
+2. To add additional domains, use the Firebase Console:
+   - Navigate to Firestore Database
+   - Open the `allowed-domains` collection
+   - Add a new document with the domain as the document ID
+   - Set the following fields:
+     ```json
+     {
+       "domain": "example.com",
+       "enabled": true,
+       "addedDate": <timestamp>,
+       "description": "Example Corporation" // optional
+     }
+     ```
+
+#### How It Works
+
+- When users sign in with Google, their email domain is checked against the allowed list
+- Both client-side and server-side validation ensure security
+- Firestore and Storage security rules enforce domain restrictions
+- Users from non-allowed domains receive a clear error message
 
 ### UI Deployment to Firebase Hosting
 
