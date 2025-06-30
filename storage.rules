@@ -1,9 +1,9 @@
 rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
+service firebase.storage {
+  match /b/{bucket}/o {
     // Allow read access only to authenticated users
     // No write access is allowed as per requirements
-    match /{document=**} {
+    match /{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if false;
     }
