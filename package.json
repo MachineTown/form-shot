@@ -13,7 +13,8 @@
     "ui:dev": "pnpm --filter @form-shot/ui dev",
     "ui:build": "pnpm --filter @form-shot/ui build",
     "ui:deploy": "pnpm --filter @form-shot/ui deploy:prod",
-    "ui:deploy:preview": "pnpm --filter @form-shot/ui deploy:preview"
+    "ui:deploy:preview": "pnpm --filter @form-shot/ui deploy:preview",
+    "init-domains": "cd scripts && pnpm install && pnpm init-domains"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

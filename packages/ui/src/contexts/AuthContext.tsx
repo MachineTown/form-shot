@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { auth } from '../services/firebase';
+import { collection, doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -29,9 +30,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const checkDomainAllowed = async (email: string): Promise<boolean> => {
+    const domain = email.split('@')[1];
+    try {
+      const domainDoc = await getDoc(doc(db, 'allowed-domains', domain));
+      return domainDoc.exists() && domainDoc.data()?.enabled === true;
+    } catch (err) {
+      console.error('Error checking domain:', err);
+      return false;
+    }
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user && user.email) {
+        // Check if the user's domain is allowed
+        const isAllowed = await checkDomainAllowed(user.email);
+        if (!isAllowed) {
+          // Sign out user if domain is not allowed
+          await signOut(auth);
+          setError(`Access denied. Your email domain is not authorized to use this application.`);
+          setUser(null);
+        } else {
+          setUser(user);
+          setError(null);
+        }
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
@@ -42,9 +68,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      
+      // Check if the user's domain is allowed
+      if (result.user.email) {
+        const isAllowed = await checkDomainAllowed(result.user.email);
+        if (!isAllowed) {
+          // Sign out immediately if domain is not allowed
+          await signOut(auth);
+          const domain = result.user.email.split('@')[1];
+          setError(`Access denied. The domain '${domain}' is not authorized to use this application.`);
+          throw new Error('Domain not authorized');
+        }
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during sign in');
+      if (err instanceof Error && err.message !== 'Domain not authorized') {
+        setError(err.message);
+      }
       throw err;
     }
   };

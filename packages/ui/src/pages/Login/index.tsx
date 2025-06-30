@@ -14,7 +14,7 @@ import { Google as GoogleIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 
 const LoginPage: React.FC = () => {
-  const { user, signInWithGoogle, loading: authLoading } = useAuth();
+  const { user, signInWithGoogle, loading: authLoading, error: authError } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +29,12 @@ const LoginPage: React.FC = () => {
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError('Failed to sign in with Google. Please try again.');
+      // Use auth error if available (for domain restrictions), otherwise use generic error
+      if (authError) {
+        setError(authError);
+      } else {
+        setError('Failed to sign in with Google. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -72,9 +77,9 @@ const LoginPage: React.FC = () => {
               </Typography>
             </Box>
 
-            {error && (
+            {(error || authError) && (
               <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
+                {error || authError}
               </Alert>
             )}
 
