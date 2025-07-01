@@ -5,7 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "VITE_USE_EMULATORS=true vite",
+    "dev:cloud": "VITE_USE_EMULATORS=false vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "deploy:prod": "pnpm build && cd ../.. && firebase deploy --only hosting,firestore,storage",

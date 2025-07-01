@@ -11,6 +11,7 @@
     "cli": "pnpm --filter @form-shot/cli start",
     "dev": "pnpm --filter @form-shot/cli dev",
     "ui:dev": "pnpm --filter @form-shot/ui dev",
+    "ui:dev:cloud": "pnpm --filter @form-shot/ui dev:cloud",
     "ui:build": "pnpm --filter @form-shot/ui build",
     "ui:deploy": "pnpm --filter @form-shot/ui deploy:prod",
     "ui:deploy:preview": "pnpm --filter @form-shot/ui deploy:preview",

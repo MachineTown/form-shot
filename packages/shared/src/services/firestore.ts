@@ -66,6 +66,31 @@ export class FirestoreService {
     }
   }
 
+  /**
+   * Generate the correct storage URL based on whether we're using emulators or production
+   */
+  private async getStorageUrl(bucketName: string, cloudPath: string): Promise<string> {
+    if (this.useEmulator) {
+      // For emulator mode, get a download URL using Firebase SDK
+      // This creates a signed URL that works with emulator authentication
+      try {
+        const file = this.storage.bucket(bucketName).file(cloudPath);
+        const [downloadUrl] = await file.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year
+        });
+        return downloadUrl;
+      } catch (error) {
+        logger.warn(`Failed to generate signed URL for ${cloudPath}, using fallback:`, error);
+        // Fallback to emulator URL format
+        return `http://localhost:9199/v0/b/${bucketName}/o/${encodeURIComponent(cloudPath)}?alt=media`;
+      }
+    } else {
+      // For production, use the standard Google Cloud Storage URL
+      return `https://storage.googleapis.com/${bucketName}/${cloudPath}`;
+    }
+  }
+
   async uploadSurvey(survey: Survey, screenshotsDir: string): Promise<void> {
     if (!this.initialized) {
       throw new Error('Firestore service not initialized');
@@ -434,7 +459,7 @@ export class FirestoreService {
           });
 
           await file.makePublic();
-          uploadedScreenshots[form.onEntryScreenshot] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+          uploadedScreenshots[form.onEntryScreenshot] = await this.getStorageUrl(bucket.name, cloudPath);
           logger.debug(`Uploaded on-entry screenshot: ${form.onEntryScreenshot}`);
         }
       } catch (error) {
@@ -464,7 +489,7 @@ export class FirestoreService {
           });
 
           await file.makePublic();
-          uploadedScreenshots[form.onExitScreenshot] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+          uploadedScreenshots[form.onExitScreenshot] = await this.getStorageUrl(bucket.name, cloudPath);
           logger.debug(`Uploaded on-exit screenshot: ${form.onExitScreenshot}`);
         }
       } catch (error) {
@@ -508,7 +533,7 @@ export class FirestoreService {
         await file.makePublic();
         
         // Get public URL
-        uploadedScreenshots[field.screenshotPath] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+        uploadedScreenshots[field.screenshotPath] = await this.getStorageUrl(bucket.name, cloudPath);
         
         logger.debug(`Uploaded screenshot: ${field.screenshotPath}`);
         
@@ -979,7 +1004,7 @@ export class FirestoreService {
         await file.makePublic();
         
         // Get public URL
-        uploadedScreenshots[filename] = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+        uploadedScreenshots[filename] = await this.getStorageUrl(bucket.name, cloudPath);
         
         logger.debug(`Uploaded test run screenshot: ${filename}`);
         

@@ -22,22 +22,28 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
 
-// Connect to emulators if in development
-// Note: Emulator connection is disabled for now to avoid connection issues
-// Uncomment the following code to enable emulator support:
-/*
-if (import.meta.env.DEV && !window.location.hostname.includes('localhost')) {
-  // Only connect if not already connected
+// Connect to emulators if in development and using local mode
+const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
+
+if (useEmulators && import.meta.env.DEV) {
   try {
+    // Connect to Firebase emulators running on localhost
     connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
     connectFirestoreEmulator(db, 'localhost', 8080);
     connectStorageEmulator(storage, 'localhost', 9199);
+    
+    console.log('🔧 Connected to Firebase emulators:');
+    console.log('  - Auth: http://localhost:9099');
+    console.log('  - Firestore: localhost:8080');
+    console.log('  - Storage: localhost:9199');
+    console.log('  - UI: http://localhost:4000');
   } catch (error) {
-    // Emulators might already be connected
-    console.log('Emulators already connected or not available');
+    console.warn('⚠️ Could not connect to emulators:', error);
+    console.log('Make sure emulators are running: pnpm emulator:start');
   }
+} else if (import.meta.env.DEV) {
+  console.log('☁️ Using production Firebase services');
 }
-*/
 
 // Helper function to check if user is authenticated
 export const isAuthenticated = () => {
