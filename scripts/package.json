@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "init-domains": "node init-allowed-domains.js"
+    "init-domains": "node init-allowed-domains.js",
+    "provision-emulator": "node provision-emulator.js"
   },
   "dependencies": {
     "firebase-admin": "^13.4.0"

@@ -15,7 +15,8 @@
     "ui:deploy": "pnpm --filter @form-shot/ui deploy:prod",
     "ui:deploy:preview": "pnpm --filter @form-shot/ui deploy:preview",
     "init-domains": "cd scripts && pnpm install && pnpm init-domains",
-    "emulator:start": "./scripts/start-emulators.sh"
+    "emulator:start": "./scripts/start-emulators.sh",
+    "emulator:provision": "cd scripts && pnpm install && pnpm provision-emulator"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
