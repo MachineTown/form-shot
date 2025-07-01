@@ -40,6 +40,7 @@ const LoginPage: React.FC = () => {
     }
   };
 
+
   if (authLoading) {
     return (
       <Box
@@ -102,6 +103,7 @@ const LoginPage: React.FC = () => {
                 'Sign in with Google'
               )}
             </Button>
+
 
             <Typography
               variant="caption"

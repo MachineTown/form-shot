@@ -93,10 +93,21 @@ async function authenticateUser(request: any): Promise<{ uid: string; email: str
   try {
     const idToken = authHeader.split("Bearer ")[1];
     const decodedToken = await getAuth().verifyIdToken(idToken);
+    
+    // In emulator mode, be more permissive for development
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+    
+    logger.info("Auth token decoded", {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      isEmulator,
+      env: process.env.FUNCTIONS_EMULATOR
+    });
+    
     return {
       uid: decodedToken.uid,
-      email: decodedToken.email || '',
-      emailVerified: decodedToken.email_verified || false
+      email: decodedToken.email || (isEmulator ? 'dev@test.com' : ''),
+      emailVerified: decodedToken.email_verified || isEmulator
     };
   } catch (error) {
     logger.warn("Authentication failed", { error });
@@ -407,6 +418,87 @@ export const getDownloadStatus = onRequest({
 
     response.status(500).json({
       error: "Failed to get download status",
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+export const downloadFile = onRequest({
+  cors: true
+}, async (request, response) => {
+  const startTime = Date.now();
+  
+  try {
+    logger.info("Download file proxy function called", {
+      method: request.method,
+      timestamp: new Date().toISOString()
+    });
+
+    // Only allow in emulator mode for security
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+    if (!isEmulator) {
+      response.status(403).json({
+        error: "File proxy only available in emulator mode",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Get file path from query parameters
+    const filePath = request.query.path as string;
+    
+    if (!filePath) {
+      response.status(400).json({
+        error: "Missing required parameter: path",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Get file from storage
+    const { getStorage } = require("firebase-admin/storage");
+    const storage = getStorage();
+    const bucket = storage.bucket("castor-form-shot.firebasestorage.app");
+    const file = bucket.file(filePath);
+    
+    // Check if file exists
+    const [exists] = await file.exists();
+    if (!exists) {
+      response.status(404).json({
+        error: "File not found",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Get file metadata
+    const [metadata] = await file.getMetadata();
+    
+    // Set appropriate headers
+    response.setHeader('Content-Type', metadata.contentType || 'application/octet-stream');
+    response.setHeader('Content-Length', metadata.size || 0);
+    response.setHeader('Content-Disposition', `attachment; filename="${filePath.split('/').pop()}"`);
+
+    // Stream the file
+    const readStream = file.createReadStream();
+    readStream.pipe(response);
+
+    logger.info("File download completed", {
+      filePath,
+      contentType: metadata.contentType,
+      size: metadata.size,
+      processingTimeMs: Date.now() - startTime
+    });
+
+  } catch (error) {
+    logger.error("Download file proxy function failed", {
+      error: error instanceof Error ? error.message : String(error),
+      processingTimeMs: Date.now() - startTime,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    response.status(500).json({
+      error: "Failed to download file",
       timestamp: new Date().toISOString()
     });
   }

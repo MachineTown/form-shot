@@ -32,6 +32,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
 
   const checkDomainAllowed = async (email: string): Promise<boolean> => {
+    // In development with emulators, allow any domain for easier testing
+    const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
+    if (useEmulators && import.meta.env.DEV) {
+      console.log('🔧 Development mode: allowing all domains for emulator testing');
+      return true;
+    }
+    
     const domain = email.split('@')[1];
     try {
       const domainDoc = await getDoc(doc(db, 'allowed-domains', domain));

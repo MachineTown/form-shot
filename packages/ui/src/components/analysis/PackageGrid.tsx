@@ -20,10 +20,12 @@ import {
   Schedule as ScheduleIcon,
   Description as DescriptionIcon,
   Preview as PreviewIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useGetAnalysesQuery } from '../../store/services/firestoreApi';
 import { useAppDispatch } from '../../hooks/redux';
 import { addToRecentlyViewed } from '../../store/slices/navigationSlice';
+import DownloadButton from './DownloadButton';
 
 interface PackageGridProps {
   customerId?: string;
@@ -197,11 +199,11 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
 
   return (
     <Box>
-      {/* Filters */}
+      {/* Filters and Study Download */}
       <Stack 
         direction={{ xs: 'column', sm: 'row' }} 
         spacing={2} 
-        sx={{ mb: 3 }}
+        sx={{ mb: 3, alignItems: 'flex-start' }}
       >
         <TextField
           select
@@ -247,6 +249,20 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
           <MenuItem value="date-desc">Newest First</MenuItem>
           <MenuItem value="name">Name (A-Z)</MenuItem>
         </TextField>
+
+        {/* Study Download Button - only show if we have a specific study */}
+        {studyFilter !== 'all' && customerId && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Study Downloads:
+            </Typography>
+            <DownloadButton
+              customerId={customerId}
+              studyId={studyFilter}
+              disabled={groupedPackages.length === 0}
+            />
+          </Box>
+        )}
       </Stack>
 
       {/* Package Grid */}
@@ -280,12 +296,19 @@ const PackageGrid: React.FC<PackageGridProps> = ({ customerId, studyId }) => {
                     px: 1.5,
                     py: 0.75,
                     display: 'flex',
-                    justifyContent: 'flex-end',
+                    justifyContent: 'space-between',
                     alignItems: 'center',
                     borderBottom: 1,
                     borderColor: 'divider',
                   }}
                 >
+                  {/* Package Download Button */}
+                  <DownloadButton
+                    customerId={primaryAnalysis.customerId}
+                    studyId={primaryAnalysis.studyId}
+                    packageName={primaryAnalysis.packageName}
+                  />
+
                   {/* Language chips */}
                   <Box
                     sx={{

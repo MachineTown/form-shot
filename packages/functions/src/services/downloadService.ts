@@ -8,7 +8,7 @@ import { FileManifest, DownloadRequest, DownloadStatus } from "../types/download
 export class DownloadService {
   private storage = getStorage();
   private firestore = getFirestore();
-  private bucketName = "castor-form-shot.appspot.com"; // Default Firebase Storage bucket
+  private bucketName = process.env.FIREBASE_STORAGE_BUCKET || "castor-form-shot.firebasestorage.app"; // Firebase Storage bucket
 
   /**
    * Get all on-entry screenshots for a study across all packages
@@ -19,55 +19,79 @@ export class DownloadService {
     try {
       const bucket = this.storage.bucket(this.bucketName);
       
-      // Get all files with the pattern: test-runs/{analysisId}/{timestamp}/screenshots/*entry*.png
+      // Get all files with the pattern: survey-screenshots/{customerId}/{studyId}/...
       const [files] = await bucket.getFiles({
-        prefix: `test-runs/`,
-        delimiter: '/'
+        prefix: `survey-screenshots/${customerId}/${studyId}/`,
       });
 
-      const manifests: FileManifest[] = [];
+      logger.info("Raw files found for study", { 
+        prefix: `survey-screenshots/${customerId}/${studyId}/`,
+        totalFiles: files.length,
+        fileNames: files.slice(0, 10).map(f => f.name) // Show first 10 files
+      });
+
+      // Group files by package/language to find latest versions
+      const packageLanguageVersions = new Map<string, { version: string, files: Array<{ fileName: string, pathParts: string[] }> }>();
       
       for (const file of files) {
         const fileName = file.name;
         
-        // Filter for entry screenshots and matching customer/study
-        if (fileName.includes('entry') && 
-            fileName.includes(customerId) && 
-            fileName.includes(studyId) &&
-            fileName.endsWith('.png')) {
+        // Filter for entry screenshots only
+        if (fileName.includes('entry') && fileName.endsWith('.png')) {
           
           // Parse the file path to extract package info
-          // Expected format: test-runs/{analysisId}/{timestamp}/screenshots/form_{N}_entry_{timestamp}.png
+          // Expected format: survey-screenshots/{customerId}/{studyId}/{packageName}/{language}/{version}/form_{N}_entry_{timestamp}.png
           const pathParts = fileName.split('/');
-          const screenshotName = pathParts[pathParts.length - 1];
           
-          // Extract package info from analysisId (format: customerId_studyId_packageName_language_version)
-          if (pathParts.length >= 2) {
-            const analysisId = pathParts[1];
-            const analysisParts = analysisId.split('_');
+          // Extract package info from path structure
+          if (pathParts.length >= 6 && 
+              pathParts[1] === customerId && 
+              pathParts[2] === studyId) {
             
-            if (analysisParts.length >= 5 && 
-                analysisParts[0] === customerId && 
-                analysisParts[1] === studyId) {
-              
-              const packageName = analysisParts[2];
-              const language = analysisParts[3];
-              const version = analysisParts[4];
-              
-              // Get file metadata
-              const [metadata] = await file.getMetadata();
-              const sizeBytes = parseInt(String(metadata.size || '0'));
-              
-              // Create ZIP path: packageName/language/version/screenshots/filename
-              const zipPath = `${packageName}/${language}/${version}/screenshots/${screenshotName}`;
-              
-              manifests.push({
-                sourcePath: fileName,
-                zipPath,
-                sizeBytes
+            const packageName = pathParts[3];
+            const language = pathParts[4];
+            const version = pathParts[5];
+            
+            const key = `${packageName}/${language}`;
+            const existing = packageLanguageVersions.get(key);
+            
+            if (!existing || this.compareVersions(version, existing.version) > 0) {
+              // This is a newer version, replace the existing one
+              packageLanguageVersions.set(key, {
+                version,
+                files: [{ fileName, pathParts }]
               });
+            } else if (existing && version === existing.version) {
+              // Same version, add to files list
+              existing.files.push({ fileName, pathParts });
             }
           }
+        }
+      }
+
+      // Build manifests from the latest versions only
+      const manifests: FileManifest[] = [];
+      
+      for (const [, versionData] of packageLanguageVersions) {
+        for (const { fileName, pathParts } of versionData.files) {
+          const screenshotName = pathParts[pathParts.length - 1];
+          const packageName = pathParts[3];
+          const language = pathParts[4];
+          const version = pathParts[5];
+          
+          // Get file metadata
+          const file = bucket.file(fileName);
+          const [metadata] = await file.getMetadata();
+          const sizeBytes = parseInt(String(metadata.size || '0'));
+          
+          // Create ZIP path: packageName/language/version/filename
+          const zipPath = `${packageName}/${language}/${version}/${screenshotName}`;
+          
+          manifests.push({
+            sourcePath: fileName,
+            zipPath,
+            sizeBytes
+          });
         }
       }
 
@@ -86,24 +110,140 @@ export class DownloadService {
   }
 
   /**
-   * Get all on-entry screenshots for a specific package
+   * Get all on-entry screenshots for a specific package (all languages, latest version of each)
    */
   async getPackageScreenshots(customerId: string, studyId: string, packageName: string): Promise<FileManifest[]> {
     logger.info("Getting package screenshots", { customerId, studyId, packageName });
     
     try {
-      const studyScreenshots = await this.getStudyScreenshots(customerId, studyId);
+      const bucket = this.storage.bucket(this.bucketName);
       
-      // Filter for specific package
-      const packageScreenshots = studyScreenshots.filter(manifest => 
-        manifest.zipPath.startsWith(`${packageName}/`)
-      );
+      // Get all files for this specific package
+      const [files] = await bucket.getFiles({
+        prefix: `survey-screenshots/${customerId}/${studyId}/${packageName}/`,
+      });
 
-      // Update ZIP paths to remove package prefix for package-level download
-      const manifests = packageScreenshots.map(manifest => ({
-        ...manifest,
-        zipPath: manifest.zipPath.replace(`${packageName}/`, '')
-      }));
+      logger.info("Raw files found", { 
+        prefix: `survey-screenshots/${customerId}/${studyId}/${packageName}/`,
+        totalFiles: files.length,
+        fileNames: files.slice(0, 10).map(f => f.name) // Show first 10 files
+      });
+
+      // If no files found, try broader search to understand storage structure
+      if (files.length === 0) {
+        logger.info("No files found with package prefix, checking broader paths...");
+        
+        // Check if customer/study exists
+        const [studyFiles] = await bucket.getFiles({
+          prefix: `survey-screenshots/${customerId}/${studyId}/`,
+          maxResults: 10
+        });
+        
+        logger.info("Files found at study level", {
+          prefix: `survey-screenshots/${customerId}/${studyId}/`,
+          count: studyFiles.length,
+          fileNames: studyFiles.map(f => f.name)
+        });
+        
+        // Check if customer exists
+        const [customerFiles] = await bucket.getFiles({
+          prefix: `survey-screenshots/${customerId}/`,
+          maxResults: 10
+        });
+        
+        logger.info("Files found at customer level", {
+          prefix: `survey-screenshots/${customerId}/`,
+          count: customerFiles.length,
+          fileNames: customerFiles.map(f => f.name)
+        });
+        
+        // Check what's actually in the survey-screenshots root
+        const [rootFiles] = await bucket.getFiles({
+          prefix: `survey-screenshots/`,
+          maxResults: 20
+        });
+        
+        logger.info("Files found at survey-screenshots root", {
+          prefix: `survey-screenshots/`,
+          count: rootFiles.length,
+          fileNames: rootFiles.map(f => f.name)
+        });
+        
+        // Check bucket name and list ALL files to see what's actually there
+        logger.info("Bucket info and sample files", {
+          bucketName: this.bucketName,
+          totalRootFiles: rootFiles.length
+        });
+      }
+
+      // Group files by language to find latest versions
+      const languageVersions = new Map<string, { version: string, files: Array<{ fileName: string, pathParts: string[] }> }>();
+      
+      for (const file of files) {
+        const fileName = file.name;
+        
+        logger.info("Checking file", { 
+          fileName,
+          hasEntry: fileName.includes('entry'),
+          isPng: fileName.endsWith('.png'),
+          pathParts: fileName.split('/')
+        });
+        
+        // Filter for entry screenshots only
+        if (fileName.includes('entry') && fileName.endsWith('.png')) {
+          
+          // Parse the file path to extract language/version info
+          // Expected format: survey-screenshots/{customerId}/{studyId}/{packageName}/{language}/{version}/form_{N}_entry_{timestamp}.png
+          const pathParts = fileName.split('/');
+          
+          // Extract language and version from path structure
+          if (pathParts.length >= 6 && 
+              pathParts[1] === customerId && 
+              pathParts[2] === studyId &&
+              pathParts[3] === packageName) {
+            
+            const language = pathParts[4];
+            const version = pathParts[5];
+            
+            const existing = languageVersions.get(language);
+            
+            if (!existing || this.compareVersions(version, existing.version) > 0) {
+              // This is a newer version, replace the existing one
+              languageVersions.set(language, {
+                version,
+                files: [{ fileName, pathParts }]
+              });
+            } else if (existing && version === existing.version) {
+              // Same version, add to files list
+              existing.files.push({ fileName, pathParts });
+            }
+          }
+        }
+      }
+
+      // Build manifests from the latest versions only
+      const manifests: FileManifest[] = [];
+      
+      for (const [language, versionData] of languageVersions) {
+        for (const { fileName, pathParts } of versionData.files) {
+          const screenshotName = pathParts[pathParts.length - 1];
+          const version = pathParts[5];
+          
+          // Get file metadata
+          const file = bucket.file(fileName);
+          const [metadata] = await file.getMetadata();
+          const sizeBytes = parseInt(String(metadata.size || '0'));
+          
+          // Create ZIP path for package download: language/version/filename (no package prefix)
+          const zipPath = `${language}/${version}/${screenshotName}`;
+          
+          manifests.push({
+            sourcePath: fileName,
+            zipPath,
+            sizeBytes
+          });
+        }
+      }
 
       logger.info("Found package screenshots", { 
         customerId, 
@@ -118,6 +258,32 @@ export class DownloadService {
       logger.error("Error getting package screenshots", { customerId, studyId, packageName, error });
       throw error;
     }
+  }
+
+  /**
+   * Compare version strings (e.g., "v1", "v2", "v10", "v1.1")
+   * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+   */
+  private compareVersions(v1: string, v2: string): number {
+    // Remove 'v' prefix if present
+    const clean1 = v1.replace(/^v/, '');
+    const clean2 = v2.replace(/^v/, '');
+    
+    // Split by dots and compare numerically
+    const parts1 = clean1.split('.').map(n => parseInt(n) || 0);
+    const parts2 = clean2.split('.').map(n => parseInt(n) || 0);
+    
+    const maxLength = Math.max(parts1.length, parts2.length);
+    
+    for (let i = 0; i < maxLength; i++) {
+      const num1 = parts1[i] || 0;
+      const num2 = parts2[i] || 0;
+      
+      if (num1 > num2) return 1;
+      if (num1 < num2) return -1;
+    }
+    
+    return 0;
   }
 
   /**
@@ -212,17 +378,32 @@ export class DownloadService {
         writeStream.on('finish', resolve);
       });
 
-      // Generate signed URL
       const expiresAt = Date.now() + (expirationMinutes * 60 * 1000);
-      const [downloadUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: expiresAt
-      });
+      
+      // Check if we're in emulator mode
+      const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+      
+      let downloadUrl: string;
+      
+      if (isEmulator) {
+        // In emulator mode, proxy through function to avoid CORS issues
+        downloadUrl = `http://localhost:5001/castor-form-shot/us-central1/downloadFile?path=${encodeURIComponent(tempPath)}`;
+        logger.info("Using emulator proxy download URL", { tempPath, downloadUrl });
+      } else {
+        // In production, use signed URL
+        const [signedUrl] = await file.getSignedUrl({
+          action: 'read',
+          expires: expiresAt
+        });
+        downloadUrl = signedUrl;
+        logger.info("Generated signed URL", { tempPath });
+      }
 
       logger.info("ZIP uploaded successfully", { 
         tempPath, 
         fileName, 
-        expiresAt: new Date(expiresAt).toISOString()
+        expiresAt: new Date(expiresAt).toISOString(),
+        isEmulator
       });
 
       return { downloadUrl, expiresAt };
