@@ -2,8 +2,8 @@ import { FirestoreService, Survey, logger } from '@form-shot/shared';
 import { readFileSync, existsSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 
-export async function uploadToFirestore(analysisJsonPath: string, leaveFiles: boolean = false): Promise<void> {
-  const firestoreService = new FirestoreService();
+export async function uploadToFirestore(analysisJsonPath: string, leaveFiles: boolean = false, useLocal: boolean = false): Promise<void> {
+  const firestoreService = new FirestoreService(useLocal);
   
   try {
     // Validate analysis.json exists
@@ -83,8 +83,8 @@ export async function uploadToFirestore(analysisJsonPath: string, leaveFiles: bo
   }
 }
 
-export async function queryFirestore(customerId?: string, studyId?: string, limit: number = 10): Promise<void> {
-  const firestoreService = new FirestoreService();
+export async function queryFirestore(customerId?: string, studyId?: string, limit: number = 10, useLocal: boolean = false): Promise<void> {
+  const firestoreService = new FirestoreService(useLocal);
   
   try {
     logger.info('Querying Firestore for analyses...');
@@ -114,8 +114,8 @@ export async function queryFirestore(customerId?: string, studyId?: string, limi
   }
 }
 
-export async function clearFirestore(): Promise<void> {
-  const firestoreService = new FirestoreService();
+export async function clearFirestore(useLocal: boolean = false): Promise<void> {
+  const firestoreService = new FirestoreService(useLocal);
   
   try {
     logger.info('Starting to clear all Firestore data...');

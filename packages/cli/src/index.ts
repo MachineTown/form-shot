@@ -50,9 +50,10 @@ program
   .description('Upload analysis results to Firestore')
   .argument('<analysis-json>', 'Path to analysis.json file')
   .option('--leave', 'Keep local output files after upload (default: remove)')
+  .option('--local', 'Use local Firebase emulators instead of production (default: false)')
   .action(async (analysisJsonPath: string, options) => {
     try {
-      await uploadToFirestore(analysisJsonPath, options.leave || false);
+      await uploadToFirestore(analysisJsonPath, options.leave || false, options.local || false);
     } catch (error) {
       logger.error('Upload failed:', error);
       process.exit(1);
@@ -65,10 +66,11 @@ program
   .option('-c, --customer <customerId>', 'Filter by customer ID')
   .option('-s, --study <studyId>', 'Filter by study ID')
   .option('-l, --limit <number>', 'Limit number of results', '10')
+  .option('--local', 'Use local Firebase emulators instead of production (default: false)')
   .action(async (options) => {
     try {
       const limit = parseInt(options.limit) || 10;
-      await queryFirestore(options.customer, options.study, limit);
+      await queryFirestore(options.customer, options.study, limit, options.local || false);
     } catch (error) {
       logger.error('Query failed:', error);
       process.exit(1);

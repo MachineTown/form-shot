@@ -8,13 +8,23 @@ export class FirestoreService {
   private db!: admin.firestore.Firestore;
   private storage!: admin.storage.Storage;
   private initialized = false;
+  private useEmulator: boolean;
 
-  constructor() {
+  constructor(useEmulator: boolean = false) {
+    this.useEmulator = useEmulator;
     this.initializeFirebase();
   }
 
   private initializeFirebase(): void {
     try {
+      // Configure emulator environment variables if using local emulators
+      if (this.useEmulator) {
+        process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
+        process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
+        process.env.FIREBASE_STORAGE_EMULATOR_HOST = 'localhost:9199';
+        logger.info('Using Firebase emulators (Firestore: 8080, Auth: 9099, Storage: 9199)');
+      }
+
       // Try to find service account key in different locations
       const possiblePaths = [
         '/app/firestore.json',  // Docker container path
@@ -49,7 +59,7 @@ export class FirestoreService {
       this.storage = admin.storage();
       this.initialized = true;
       
-      logger.info('Firestore service initialized successfully');
+      logger.info(`Firestore service initialized successfully${this.useEmulator ? ' (using emulators)' : ''}`);
     } catch (error) {
       logger.error('Failed to initialize Firestore service:', error);
       throw error;
