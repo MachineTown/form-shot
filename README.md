@@ -26,6 +26,9 @@ An automated survey form analysis tool that captures form fields, screenshots, a
 - Node.js 18+ LTS (for development only)
 - Firestore service account credentials (optional, for cloud upload)
 
+*** MCP Server setup ***
+claude mcp add firebase -s user -- npx -y firebase-tools@latest experimental:mcp
+
 ## Quick Start
 
 ### 1. Build the Docker Container
