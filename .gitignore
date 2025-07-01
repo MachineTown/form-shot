@@ -11,3 +11,5 @@ vite.config.*.timestamp*
 .firebase
 package-lock.json
 yarn.lock
+emulator-data/
+.nfs*
