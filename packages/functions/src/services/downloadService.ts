@@ -1,11 +1,13 @@
 import { logger } from "firebase-functions";
 import { getStorage } from "firebase-admin/storage";
+import { getFirestore } from "firebase-admin/firestore";
 import archiver from "archiver";
 import { Readable } from "stream";
-import { FileManifest, DownloadRequest } from "../types/download";
+import { FileManifest, DownloadRequest, DownloadStatus } from "../types/download";
 
 export class DownloadService {
   private storage = getStorage();
+  private firestore = getFirestore();
   private bucketName = "castor-form-shot.appspot.com"; // Default Firebase Storage bucket
 
   /**
@@ -228,6 +230,177 @@ export class DownloadService {
       logger.error("Error uploading ZIP", { fileName, error });
       throw error;
     }
+  }
+
+  /**
+   * Create download status tracking in Firestore
+   */
+  async createDownloadStatus(requestId: string, totalFiles: number, totalSizeBytes: number): Promise<void> {
+    const downloadRef = this.firestore.collection('download-requests').doc(requestId);
+    
+    const status: DownloadStatus = {
+      status: 'processing',
+      progress: 0
+    };
+
+    await downloadRef.set({
+      ...status,
+      totalFiles,
+      totalSizeBytes,
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    });
+
+    logger.info("Download status created", { requestId, totalFiles, totalSizeBytes });
+  }
+
+  /**
+   * Update download progress in Firestore
+   */
+  async updateDownloadProgress(requestId: string, progress: number): Promise<void> {
+    const downloadRef = this.firestore.collection('download-requests').doc(requestId);
+    
+    await downloadRef.update({
+      progress,
+      lastUpdated: new Date().toISOString()
+    });
+
+    logger.info("Download progress updated", { requestId, progress });
+  }
+
+  /**
+   * Mark download as completed in Firestore
+   */
+  async completeDownloadStatus(
+    requestId: string, 
+    downloadUrl: string, 
+    expiresAt: number,
+    fileName: string
+  ): Promise<void> {
+    const downloadRef = this.firestore.collection('download-requests').doc(requestId);
+    
+    await downloadRef.update({
+      status: 'completed',
+      progress: 100,
+      downloadUrl,
+      expiresAt,
+      fileName,
+      completedAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    });
+
+    logger.info("Download completed", { requestId, fileName, expiresAt });
+  }
+
+  /**
+   * Mark download as failed in Firestore
+   */
+  async failDownloadStatus(requestId: string, errorMessage: string): Promise<void> {
+    const downloadRef = this.firestore.collection('download-requests').doc(requestId);
+    
+    await downloadRef.update({
+      status: 'failed',
+      errorMessage,
+      failedAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    });
+
+    logger.error("Download failed", { requestId, errorMessage });
+  }
+
+  /**
+   * Get download status from Firestore
+   */
+  async getDownloadStatus(requestId: string): Promise<DownloadStatus | null> {
+    const downloadRef = this.firestore.collection('download-requests').doc(requestId);
+    const doc = await downloadRef.get();
+    
+    if (!doc.exists) {
+      return null;
+    }
+
+    return doc.data() as DownloadStatus;
+  }
+
+  /**
+   * Generate ZIP stream with progress tracking
+   */
+  async generateZipStreamWithProgress(
+    manifests: FileManifest[], 
+    requestId: string,
+    includeMetadata = false
+  ): Promise<Readable> {
+    logger.info("Generating ZIP stream with progress tracking", { 
+      fileCount: manifests.length, 
+      includeMetadata,
+      requestId 
+    });
+    
+    const archive = archiver('zip', {
+      zlib: { level: 6 } // Balance compression vs CPU
+    });
+
+    let processedFiles = 0;
+    const totalFiles = manifests.length;
+
+    // Add files to archive with progress tracking
+    for (const manifest of manifests) {
+      try {
+        const bucket = this.storage.bucket(this.bucketName);
+        const file = bucket.file(manifest.sourcePath);
+        
+        // Check if file exists
+        const [exists] = await file.exists();
+        if (!exists) {
+          logger.warn("File not found, skipping", { path: manifest.sourcePath });
+          processedFiles++;
+          continue;
+        }
+
+        // Add file to archive as a stream
+        const fileStream = file.createReadStream();
+        archive.append(fileStream, { name: manifest.zipPath });
+        
+        processedFiles++;
+        const progress = Math.round((processedFiles / totalFiles) * 90); // Reserve 10% for finalization
+        
+        // Update progress every 10 files or on completion
+        if (processedFiles % 10 === 0 || processedFiles === totalFiles) {
+          await this.updateDownloadProgress(requestId, progress);
+        }
+        
+      } catch (error) {
+        logger.warn("Error adding file to ZIP", { 
+          path: manifest.sourcePath, 
+          error: error instanceof Error ? error.message : String(error)
+        });
+        processedFiles++;
+        // Continue with other files
+      }
+    }
+
+    // Add metadata file if requested
+    if (includeMetadata) {
+      const metadata = {
+        generatedAt: new Date().toISOString(),
+        fileCount: manifests.length,
+        totalSizeBytes: manifests.reduce((sum, m) => sum + m.sizeBytes, 0),
+        files: manifests.map(m => ({
+          path: m.zipPath,
+          sizeBytes: m.sizeBytes
+        }))
+      };
+      
+      archive.append(JSON.stringify(metadata, null, 2), { name: 'download_metadata.json' });
+    }
+
+    // Finalize the archive
+    archive.finalize();
+    
+    // Update progress to 95% (finalizing)
+    await this.updateDownloadProgress(requestId, 95);
+    
+    return archive;
   }
 
   /**

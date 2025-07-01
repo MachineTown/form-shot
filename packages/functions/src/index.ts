@@ -164,20 +164,36 @@ export const downloadStudyZip = onRequest({
       return;
     }
 
-    // Generate ZIP stream
-    const zipStream = await downloadService.generateZipStream(manifests, includeMetadata);
-    
-    // Generate filename
-    const fileName = downloadService.generateFileName({ customerId, studyId, includeMetadata });
-    
-    // Upload to temporary storage and get signed URL
-    const { downloadUrl, expiresAt } = await downloadService.uploadAndGetSignedUrl(zipStream, fileName);
+    // Create download status tracking
+    const totalSizeBytes = manifests.reduce((sum, m) => sum + m.sizeBytes, 0);
+    await downloadService.createDownloadStatus(requestId, manifests.length, totalSizeBytes);
+
+    let downloadUrl: string, expiresAt: number, fileName: string;
+
+    try {
+      // Generate ZIP stream with progress tracking
+      const zipStream = await downloadService.generateZipStreamWithProgress(manifests, requestId, includeMetadata);
+      
+      // Generate filename
+      fileName = downloadService.generateFileName({ customerId, studyId, includeMetadata });
+      
+      // Upload to temporary storage and get signed URL
+      const uploadResult = await downloadService.uploadAndGetSignedUrl(zipStream, fileName);
+      downloadUrl = uploadResult.downloadUrl;
+      expiresAt = uploadResult.expiresAt;
+
+      // Mark as completed
+      await downloadService.completeDownloadStatus(requestId, downloadUrl, expiresAt, fileName);
+    } catch (zipError) {
+      await downloadService.failDownloadStatus(requestId, zipError instanceof Error ? zipError.message : String(zipError));
+      throw zipError;
+    }
 
     const responseData: DownloadResponse = {
       downloadUrl,
       expiresAt,
       fileName,
-      fileSizeBytes: manifests.reduce((sum, m) => sum + m.sizeBytes, 0),
+      fileSizeBytes: totalSizeBytes,
       requestId,
       estimatedGenerationTimeMs: Date.now() - startTime
     };
@@ -269,20 +285,36 @@ export const downloadPackageZip = onRequest({
       return;
     }
 
-    // Generate ZIP stream
-    const zipStream = await downloadService.generateZipStream(manifests, includeMetadata);
-    
-    // Generate filename
-    const fileName = downloadService.generateFileName({ customerId, studyId, packageName, includeMetadata });
-    
-    // Upload to temporary storage and get signed URL
-    const { downloadUrl, expiresAt } = await downloadService.uploadAndGetSignedUrl(zipStream, fileName);
+    // Create download status tracking
+    const totalSizeBytes = manifests.reduce((sum, m) => sum + m.sizeBytes, 0);
+    await downloadService.createDownloadStatus(requestId, manifests.length, totalSizeBytes);
+
+    let downloadUrl: string, expiresAt: number, fileName: string;
+
+    try {
+      // Generate ZIP stream with progress tracking
+      const zipStream = await downloadService.generateZipStreamWithProgress(manifests, requestId, includeMetadata);
+      
+      // Generate filename
+      fileName = downloadService.generateFileName({ customerId, studyId, packageName, includeMetadata });
+      
+      // Upload to temporary storage and get signed URL
+      const uploadResult = await downloadService.uploadAndGetSignedUrl(zipStream, fileName);
+      downloadUrl = uploadResult.downloadUrl;
+      expiresAt = uploadResult.expiresAt;
+
+      // Mark as completed
+      await downloadService.completeDownloadStatus(requestId, downloadUrl, expiresAt, fileName);
+    } catch (zipError) {
+      await downloadService.failDownloadStatus(requestId, zipError instanceof Error ? zipError.message : String(zipError));
+      throw zipError;
+    }
 
     const responseData: DownloadResponse = {
       downloadUrl,
       expiresAt,
       fileName,
-      fileSizeBytes: manifests.reduce((sum, m) => sum + m.sizeBytes, 0),
+      fileSizeBytes: totalSizeBytes,
       requestId,
       estimatedGenerationTimeMs: Date.now() - startTime
     };
@@ -310,6 +342,72 @@ export const downloadPackageZip = onRequest({
       error: "Failed to generate package download",
       timestamp: new Date().toISOString(),
       requestId
+    });
+  }
+});
+
+export const getDownloadStatus = onRequest({
+  cors: true
+}, async (request, response) => {
+  const startTime = Date.now();
+  
+  try {
+    logger.info("Get download status function called", {
+      method: request.method,
+      timestamp: new Date().toISOString()
+    });
+
+    // Authenticate user
+    const userInfo = await authenticateUser(request);
+    if (!userInfo) {
+      response.status(401).json({
+        error: "Authentication required",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Get request ID from query parameters
+    const requestId = request.query.requestId as string;
+    
+    if (!requestId) {
+      response.status(400).json({
+        error: "Missing required parameter: requestId",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    const downloadService = new DownloadService();
+    const status = await downloadService.getDownloadStatus(requestId);
+
+    if (!status) {
+      response.status(404).json({
+        error: "Download request not found",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    logger.info("Download status retrieved", {
+      requestId,
+      status: status.status,
+      progress: status.progress,
+      processingTimeMs: Date.now() - startTime
+    });
+
+    response.status(200).json(status);
+
+  } catch (error) {
+    logger.error("Get download status function failed", {
+      error: error instanceof Error ? error.message : String(error),
+      processingTimeMs: Date.now() - startTime,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    response.status(500).json({
+      error: "Failed to get download status",
+      timestamp: new Date().toISOString()
     });
   }
 });
