@@ -15,6 +15,9 @@
     "ui:build": "pnpm --filter @form-shot/ui build",
     "ui:deploy": "pnpm --filter @form-shot/ui deploy:prod",
     "ui:deploy:preview": "pnpm --filter @form-shot/ui deploy:preview",
+    "functions:build": "pnpm --filter @form-shot/functions build",
+    "functions:serve": "pnpm --filter @form-shot/functions serve",
+    "functions:deploy": "pnpm --filter @form-shot/functions deploy",
     "init-domains": "cd scripts && pnpm install && pnpm init-domains",
     "emulator:start": "./scripts/start-emulators.sh",
     "emulator:provision": "cd scripts && pnpm install && pnpm provision-emulator"

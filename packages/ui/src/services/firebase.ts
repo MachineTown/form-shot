@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 // Firebase configuration
 // NOTE: In production, these should be environment variables
@@ -21,6 +22,7 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
+export const functions = getFunctions(app);
 
 // Connect to emulators if in development and using local mode
 const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
@@ -31,11 +33,13 @@ if (useEmulators && import.meta.env.DEV) {
     connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
     connectFirestoreEmulator(db, 'localhost', 8080);
     connectStorageEmulator(storage, 'localhost', 9199);
+    connectFunctionsEmulator(functions, 'localhost', 5001);
     
     console.log('🔧 Connected to Firebase emulators:');
     console.log('  - Auth: http://localhost:9099');
     console.log('  - Firestore: localhost:8080');
     console.log('  - Storage: localhost:9199');
+    console.log('  - Functions: localhost:5001');
     console.log('  - UI: http://localhost:4000');
   } catch (error) {
     console.warn('⚠️ Could not connect to emulators:', error);
