@@ -6,6 +6,8 @@ import {
   CardContent,
   CardMedia,
   Chip,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import { 
   Assessment as AssessmentIcon,
@@ -16,10 +18,12 @@ import {
   Schedule as ScheduleIcon,
   Description as DescriptionIcon,
   Preview as PreviewIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useGetCustomersQuery, useGetAnalysesQuery } from '../store/services/firestoreApi';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DownloadButton from '../components/analysis/DownloadButton';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -201,19 +205,29 @@ const Dashboard: React.FC = () => {
                     }}
                     onClick={() => handlePackageClick(packageGroup)}
                   >
-                    {/* Top bar with chips */}
+                    {/* Top bar with chips and download button */}
                     <Box
                       sx={{
                         bgcolor: 'grey.100',
                         px: 1.5,
                         py: 0.75,
                         display: 'flex',
-                        justifyContent: 'flex-end',
+                        justifyContent: 'space-between',
                         alignItems: 'center',
                         borderBottom: 1,
                         borderColor: 'divider',
                       }}
                     >
+                      {/* Download button */}
+                      <Box onClick={(e) => e.stopPropagation()}>
+                        <DownloadButton
+                          customerId={primaryAnalysis.customerId}
+                          studyId={primaryAnalysis.studyId}
+                          packageName={primaryAnalysis.packageName}
+                          size="small"
+                        />
+                      </Box>
+
                       {/* Language chips */}
                       <Box
                         sx={{
