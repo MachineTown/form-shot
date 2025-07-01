@@ -33,6 +33,7 @@ interface DownloadButtonProps {
   studyId: string;
   packageName?: string; // If provided, this is a package-level button
   disabled?: boolean;
+  size?: 'small' | 'medium' | 'large';
 }
 
 interface DownloadState {
@@ -47,7 +48,8 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
   customerId, 
   studyId, 
   packageName,
-  disabled = false 
+  disabled = false,
+  size = 'medium'
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [downloadState, setDownloadState] = useState<DownloadState>({
@@ -183,12 +185,12 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
       <Tooltip title={getTooltipText()}>
         <span> {/* Span wrapper needed for disabled tooltip */}
           <IconButton
-            size="small"
+            size={size}
             onClick={handleClick}
             disabled={disabled || downloadState.isDownloading}
             color={getIconColor() as any}
             sx={{ 
-              ml: 1,
+              ml: size === 'small' ? 0.5 : 1,
               '&.Mui-disabled': {
                 opacity: 0.6
               }

@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { collection, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
-import { callHelloworld } from '../services/functions';
 
 interface AuthContextType {
   user: User | null;
@@ -62,14 +61,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } else {
           setUser(user);
           setError(null);
-          
-          // Call helloworld function after successful authentication
-          try {
-            await callHelloworld();
-          } catch (funcError) {
-            console.warn('Failed to call helloworld function:', funcError);
-            // Don't set auth error for function call failures
-          }
         }
       } else {
         setUser(null);
