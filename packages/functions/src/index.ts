@@ -106,7 +106,7 @@ async function authenticateUser(request: any): Promise<{ uid: string; email: str
 
 export const downloadStudyZip = onRequest({
   cors: true,
-  timeoutSeconds: 540, // 9 minutes
+  timeoutSeconds: 60, // 1 minute
   memory: "2GiB"
 }, async (request, response) => {
   const startTime = Date.now();
@@ -226,7 +226,7 @@ export const downloadStudyZip = onRequest({
 
 export const downloadPackageZip = onRequest({
   cors: true,
-  timeoutSeconds: 300, // 5 minutes
+  timeoutSeconds: 30, // 30 seconds
   memory: "1GiB"
 }, async (request, response) => {
   const startTime = Date.now();
