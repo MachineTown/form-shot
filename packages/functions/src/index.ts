@@ -2,6 +2,8 @@ import { onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { DownloadService } from "./services/downloadService";
+import { DownloadRequest, DownloadResponse } from "./types/download";
 
 // Initialize Firebase Admin SDK
 initializeApp();
@@ -76,6 +78,238 @@ export const helloworld = onRequest({
       error: "Internal server error",
       timestamp: new Date().toISOString(),
       requestId: Math.random().toString(36).substring(7)
+    });
+  }
+});
+
+// Helper function to authenticate user
+async function authenticateUser(request: any): Promise<{ uid: string; email: string; emailVerified: boolean } | null> {
+  const authHeader = request.get("Authorization");
+  
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+
+  try {
+    const idToken = authHeader.split("Bearer ")[1];
+    const decodedToken = await getAuth().verifyIdToken(idToken);
+    return {
+      uid: decodedToken.uid,
+      email: decodedToken.email || '',
+      emailVerified: decodedToken.email_verified || false
+    };
+  } catch (error) {
+    logger.warn("Authentication failed", { error });
+    return null;
+  }
+}
+
+export const downloadStudyZip = onRequest({
+  cors: true,
+  timeoutSeconds: 540, // 9 minutes
+  memory: "2GiB"
+}, async (request, response) => {
+  const startTime = Date.now();
+  const requestId = Math.random().toString(36).substring(7);
+  
+  try {
+    logger.info("Download study ZIP function called", {
+      method: request.method,
+      requestId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Authenticate user
+    const userInfo = await authenticateUser(request);
+    if (!userInfo) {
+      response.status(401).json({
+        error: "Authentication required",
+        timestamp: new Date().toISOString(),
+        requestId
+      });
+      return;
+    }
+
+    // Parse request body
+    const { customerId, studyId, includeMetadata = false } = request.body as DownloadRequest;
+    
+    if (!customerId || !studyId) {
+      response.status(400).json({
+        error: "Missing required parameters: customerId, studyId",
+        timestamp: new Date().toISOString(),
+        requestId
+      });
+      return;
+    }
+
+    logger.info("Processing study download request", {
+      customerId,
+      studyId,
+      includeMetadata,
+      userId: userInfo.uid,
+      requestId
+    });
+
+    const downloadService = new DownloadService();
+    
+    // Get all screenshots for the study
+    const manifests = await downloadService.getStudyScreenshots(customerId, studyId);
+    
+    if (manifests.length === 0) {
+      response.status(404).json({
+        error: "No on-entry screenshots found for this study",
+        timestamp: new Date().toISOString(),
+        requestId
+      });
+      return;
+    }
+
+    // Generate ZIP stream
+    const zipStream = await downloadService.generateZipStream(manifests, includeMetadata);
+    
+    // Generate filename
+    const fileName = downloadService.generateFileName({ customerId, studyId, includeMetadata });
+    
+    // Upload to temporary storage and get signed URL
+    const { downloadUrl, expiresAt } = await downloadService.uploadAndGetSignedUrl(zipStream, fileName);
+
+    const responseData: DownloadResponse = {
+      downloadUrl,
+      expiresAt,
+      fileName,
+      fileSizeBytes: manifests.reduce((sum, m) => sum + m.sizeBytes, 0),
+      requestId,
+      estimatedGenerationTimeMs: Date.now() - startTime
+    };
+
+    logger.info("Study download completed successfully", {
+      customerId,
+      studyId,
+      fileCount: manifests.length,
+      processingTimeMs: responseData.estimatedGenerationTimeMs,
+      requestId
+    });
+
+    response.status(200).json(responseData);
+
+  } catch (error) {
+    logger.error("Download study ZIP function failed", {
+      error: error instanceof Error ? error.message : String(error),
+      processingTimeMs: Date.now() - startTime,
+      requestId,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    response.status(500).json({
+      error: "Failed to generate study download",
+      timestamp: new Date().toISOString(),
+      requestId
+    });
+  }
+});
+
+export const downloadPackageZip = onRequest({
+  cors: true,
+  timeoutSeconds: 300, // 5 minutes
+  memory: "1GiB"
+}, async (request, response) => {
+  const startTime = Date.now();
+  const requestId = Math.random().toString(36).substring(7);
+  
+  try {
+    logger.info("Download package ZIP function called", {
+      method: request.method,
+      requestId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Authenticate user
+    const userInfo = await authenticateUser(request);
+    if (!userInfo) {
+      response.status(401).json({
+        error: "Authentication required",
+        timestamp: new Date().toISOString(),
+        requestId
+      });
+      return;
+    }
+
+    // Parse request body
+    const { customerId, studyId, packageName, includeMetadata = false } = request.body as DownloadRequest;
+    
+    if (!customerId || !studyId || !packageName) {
+      response.status(400).json({
+        error: "Missing required parameters: customerId, studyId, packageName",
+        timestamp: new Date().toISOString(),
+        requestId
+      });
+      return;
+    }
+
+    logger.info("Processing package download request", {
+      customerId,
+      studyId,
+      packageName,
+      includeMetadata,
+      userId: userInfo.uid,
+      requestId
+    });
+
+    const downloadService = new DownloadService();
+    
+    // Get all screenshots for the package
+    const manifests = await downloadService.getPackageScreenshots(customerId, studyId, packageName);
+    
+    if (manifests.length === 0) {
+      response.status(404).json({
+        error: "No on-entry screenshots found for this package",
+        timestamp: new Date().toISOString(),
+        requestId
+      });
+      return;
+    }
+
+    // Generate ZIP stream
+    const zipStream = await downloadService.generateZipStream(manifests, includeMetadata);
+    
+    // Generate filename
+    const fileName = downloadService.generateFileName({ customerId, studyId, packageName, includeMetadata });
+    
+    // Upload to temporary storage and get signed URL
+    const { downloadUrl, expiresAt } = await downloadService.uploadAndGetSignedUrl(zipStream, fileName);
+
+    const responseData: DownloadResponse = {
+      downloadUrl,
+      expiresAt,
+      fileName,
+      fileSizeBytes: manifests.reduce((sum, m) => sum + m.sizeBytes, 0),
+      requestId,
+      estimatedGenerationTimeMs: Date.now() - startTime
+    };
+
+    logger.info("Package download completed successfully", {
+      customerId,
+      studyId,
+      packageName,
+      fileCount: manifests.length,
+      processingTimeMs: responseData.estimatedGenerationTimeMs,
+      requestId
+    });
+
+    response.status(200).json(responseData);
+
+  } catch (error) {
+    logger.error("Download package ZIP function failed", {
+      error: error instanceof Error ? error.message : String(error),
+      processingTimeMs: Date.now() - startTime,
+      requestId,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    response.status(500).json({
+      error: "Failed to generate package download",
+      timestamp: new Date().toISOString(),
+      requestId
     });
   }
 });

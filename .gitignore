@@ -15,3 +15,6 @@ package-lock.json
 yarn.lock
 emulator-data/
 .nfs*
+
+# Firebase Functions build artifacts
+packages/functions/lib/
