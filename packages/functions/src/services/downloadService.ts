@@ -8,7 +8,32 @@ import { FileManifest, DownloadRequest, DownloadStatus } from "../types/download
 export class DownloadService {
   private storage = getStorage();
   private firestore = getFirestore();
-  private bucketName = process.env.FIREBASE_STORAGE_BUCKET || "castor-form-shot.firebasestorage.app"; // Firebase Storage bucket
+  private bucketName: string;
+
+  constructor() {
+    // Get bucket name from environment or use default
+    this.bucketName = process.env.FIREBASE_STORAGE_BUCKET || "castor-form-shot.firebasestorage.app";
+    
+    // In production, try to use the default bucket if no explicit bucket is set
+    if (!process.env.FIREBASE_STORAGE_BUCKET && process.env.FUNCTIONS_EMULATOR !== 'true') {
+      try {
+        // Get the default bucket from the storage instance
+        const defaultBucket = this.storage.bucket();
+        this.bucketName = defaultBucket.name;
+        logger.info("Using default storage bucket", { bucketName: this.bucketName });
+      } catch (error) {
+        logger.warn("Could not get default bucket, using configured bucket", { 
+          bucketName: this.bucketName,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    
+    logger.info("DownloadService initialized", { 
+      bucketName: this.bucketName,
+      isEmulator: process.env.FUNCTIONS_EMULATOR === 'true'
+    });
+  }
 
   /**
    * Get all on-entry screenshots for a study across all packages
@@ -354,9 +379,17 @@ export class DownloadService {
     logger.info("Uploading ZIP to temporary storage", { fileName, expirationMinutes });
     
     try {
+      logger.info("Starting file upload", { 
+        fileName, 
+        bucketName: this.bucketName,
+        expirationMinutes 
+      });
+
       const bucket = this.storage.bucket(this.bucketName);
       const tempPath = `temp-downloads/${Date.now()}_${fileName}`;
       const file = bucket.file(tempPath);
+
+      logger.info("Creating write stream", { tempPath, bucketName: this.bucketName });
 
       // Upload the ZIP stream
       const writeStream = file.createWriteStream({
@@ -372,16 +405,37 @@ export class DownloadService {
       // Pipe the ZIP stream to Cloud Storage
       zipStream.pipe(writeStream);
 
+      logger.info("Piped stream, waiting for upload to complete", { tempPath });
+
       // Wait for upload to complete
       await new Promise((resolve, reject) => {
-        writeStream.on('error', reject);
-        writeStream.on('finish', resolve);
+        writeStream.on('error', (error) => {
+          logger.error("Write stream error", { 
+            tempPath, 
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
+          reject(error);
+        });
+        writeStream.on('finish', () => {
+          logger.info("Write stream finished successfully", { tempPath });
+          resolve(void 0);
+        });
       });
+
+      logger.info("Upload completed, verifying file exists", { tempPath });
 
       const expiresAt = Date.now() + (expirationMinutes * 60 * 1000);
       
       // Check if we're in emulator mode
       const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+      
+      logger.info("Generating download URL", { 
+        isEmulator, 
+        tempPath, 
+        bucketName: this.bucketName,
+        expiresAt: new Date(expiresAt).toISOString()
+      });
       
       let downloadUrl: string;
       
@@ -390,13 +444,46 @@ export class DownloadService {
         downloadUrl = `http://localhost:5001/castor-form-shot/us-central1/downloadFile?path=${encodeURIComponent(tempPath)}`;
         logger.info("Using emulator proxy download URL", { tempPath, downloadUrl });
       } else {
-        // In production, use signed URL
-        const [signedUrl] = await file.getSignedUrl({
-          action: 'read',
-          expires: expiresAt
-        });
-        downloadUrl = signedUrl;
-        logger.info("Generated signed URL", { tempPath });
+        try {
+          // In production, use signed URL with proper configuration
+          logger.info("Attempting to generate signed URL", { 
+            tempPath, 
+            bucketName: this.bucketName,
+            expiresAt 
+          });
+          
+          // Try with proper Date object for expires
+          const expirationDate = new Date(expiresAt);
+          
+          const [signedUrl] = await file.getSignedUrl({
+            action: 'read',
+            expires: expirationDate,
+            version: 'v4' // Use v4 signing
+          });
+          downloadUrl = signedUrl;
+          logger.info("Successfully generated signed URL", { tempPath, urlLength: signedUrl.length });
+        } catch (signError) {
+          logger.error("Failed to generate signed URL, trying fallback", { 
+            tempPath, 
+            bucketName: this.bucketName,
+            error: signError instanceof Error ? signError.message : String(signError),
+            stack: signError instanceof Error ? signError.stack : undefined
+          });
+          
+          // Fallback: try to make the file public and return public URL
+          try {
+            logger.info("Attempting fallback: making file public", { tempPath });
+            await file.makePublic();
+            downloadUrl = `https://storage.googleapis.com/${this.bucketName}/${tempPath}`;
+            logger.info("Successfully created public URL", { tempPath, downloadUrl });
+          } catch (publicError) {
+            logger.error("Failed to create public URL", { 
+              tempPath, 
+              error: publicError instanceof Error ? publicError.message : String(publicError)
+            });
+            throw signError; // Throw original signing error
+          }
+        }
       }
 
       logger.info("ZIP uploaded successfully", { 

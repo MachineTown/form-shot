@@ -454,6 +454,41 @@ Ensure your service account has the following roles:
 - Firebase Admin SDK Service Agent  
 - Storage Admin
 
+### Firebase Functions Download Issues
+
+If you encounter signed URL generation errors like `Permission 'iam.serviceAccounts.signBlob' denied`, this indicates an IAM permission issue with the service account identity being used for signing.
+
+#### Diagnosis: Check Which Service Account is Running
+The error occurs when Firebase Functions tries to generate signed URLs but the underlying compute service account lacks the required permissions. Firebase Functions may use a different service account than expected for signing operations.
+
+#### Solution: Grant Permissions to Compute Service Account
+
+**The actual service account being used is likely:**
+```
+PROJECT_ID-compute@developer.gserviceaccount.com
+```
+
+**Steps to fix:**
+
+1. **Go to Google Cloud Console > IAM & Admin > IAM**
+2. **Find or add the compute service account:**
+   - Look for: `castor-form-shot-compute@developer.gserviceaccount.com` 
+   - (Replace `castor-form-shot` with your actual project ID)
+3. **Add the required role:**
+   - Click "Add Member" if the account doesn't exist
+   - Email: `your-project-id-compute@developer.gserviceaccount.com`
+   - Role: **"Service Account Token Creator"**
+   - Save the changes
+
+**Alternative: Project-level permissions**
+If the above doesn't work, add the role at project level:
+1. Go to IAM & Admin > IAM
+2. Find your Firebase Admin SDK service account: `firebase-adminsdk-xxxxx@castor-form-shot.iam.gserviceaccount.com`
+3. Add role: **"Service Account Token Creator"** at the **project level** (not just service account level)
+
+**Verification:**
+After applying the permissions, redeploy your functions and test the download functionality. The signed URL generation should now work correctly in production.
+
 ## Development
 
 Form-Shot is structured as a pnpm monorepo with the following packages:
