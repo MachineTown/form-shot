@@ -81,12 +81,19 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
       // Check if this is the last form (has finish button)
       isLastForm = navButtons.some(b => b.type === 'finish');
       
-      if (!isLastForm) {
-        // Fill required fields and navigate to next form
-        try {
-          // Check if this is an informational form (no fields)
-          if (form.fields.length === 0) {
+      // Process all forms (including the last one) - fill fields and take exit screenshots
+      // Fill required fields for all forms (including last form)
+      try {
+        // Check if this is an informational form (no fields)
+        if (form.fields.length === 0) {
             logger.info('Form appears to have no input fields - checking if it might be a dynamic form');
+            
+            // Take exit screenshot BEFORE doing navigation tests for informational forms
+            logger.info('Taking exit screenshot for potential informational form...');
+            const onExitScreenshot = await screenshotService.takeOnExitScreenshot(puppeteerManager.getPage(), form, formIndex, tuple);
+            if (onExitScreenshot) {
+              form.onExitScreenshot = onExitScreenshot;
+            }
             
             // Try clicking next to see if it triggers validation or reveals fields
             logger.info('Attempting navigation to check for dynamic content...');
@@ -113,14 +120,23 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
                   // Fill the fields
                   const allFields = await formNavigator.fillRequiredFields(puppeteerManager.getPage(), form.fields);
                   form.fields = allFields;
+                  
+                  // Take a new exit screenshot since this is now a form with fields
+                  logger.info('Taking new exit screenshot for dynamic form with fields...');
+                  const newOnExitScreenshot = await screenshotService.takeOnExitScreenshot(puppeteerManager.getPage(), form, formIndex, tuple);
+                  if (newOnExitScreenshot) {
+                    form.onExitScreenshot = newOnExitScreenshot;
+                  }
                 } else {
-                  logger.info('No fields found even after validation modal - treating as informational form');
+                  logger.info('No fields found even after validation modal - confirmed as informational form');
                 }
               } else {
                 // Check if we actually navigated
                 const transitioned = await formNavigator.waitForFormTransition(puppeteerManager.getPage(), form.longTitle);
                 if (transitioned) {
-                  logger.info('Form transitioned without fields - it was truly informational');
+                  logger.info('Form transitioned without fields - confirmed as informational form');
+                  // Exit screenshot was already taken above, so just continue
+                  
                   // We've already moved to the next form, so continue from there
                   formIndex++;
                   continue;
@@ -172,15 +188,21 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
             }
           }
           
-          // Take on-exit screenshot before navigation (for all forms, including informational)
-          logger.info('Taking on-exit screenshot before navigation...');
-          const onExitScreenshot = await screenshotService.takeOnExitScreenshot(puppeteerManager.getPage(), form, formIndex, tuple);
-          if (onExitScreenshot) {
-            form.onExitScreenshot = onExitScreenshot;
+          // Take on-exit screenshot for all forms (including last form) if not already taken
+          if (!form.onExitScreenshot) {
+            logger.info('Taking on-exit screenshot...');
+            const onExitScreenshot = await screenshotService.takeOnExitScreenshot(puppeteerManager.getPage(), form, formIndex, tuple);
+            if (onExitScreenshot) {
+              form.onExitScreenshot = onExitScreenshot;
+            }
+          } else {
+            logger.info('Exit screenshot already taken for this form');
           }
           
-          logger.info('Clicking next button...');
-          await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
+          // Only navigate if this is not the last form
+          if (!isLastForm) {
+            logger.info('Clicking next button...');
+            await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
           
           // Check for validation modal
           const hasModal = await formNavigator.detectValidationModal(puppeteerManager.getPage());
@@ -256,10 +278,13 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
           }
           
           formIndex++;
-        } catch (error) {
-          logger.error('Error navigating to next form:', error);
-          break;
+        } else {
+          // This is the last form - log that we're done
+          logger.info('Last form detected (has finish button). Analysis complete.');
         }
+      } catch (error) {
+        logger.error('Error processing form:', error);
+        break;
       }
     }
     
