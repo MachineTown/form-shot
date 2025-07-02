@@ -95,7 +95,7 @@ export const downloadStudyZip = onRequest({
     
     if (manifests.length === 0) {
       response.status(404).json({
-        error: "No on-entry screenshots found for this study",
+        error: "No on-exit screenshots found for this study",
         timestamp: new Date().toISOString(),
         requestId
       });
@@ -216,7 +216,7 @@ export const downloadPackageZip = onRequest({
     
     if (manifests.length === 0) {
       response.status(404).json({
-        error: "No on-entry screenshots found for this package",
+        error: "No on-exit screenshots found for this package",
         timestamp: new Date().toISOString(),
         requestId
       });

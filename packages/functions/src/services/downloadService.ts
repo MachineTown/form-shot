@@ -36,7 +36,7 @@ export class DownloadService {
   }
 
   /**
-   * Get all on-entry screenshots for a study across all packages
+   * Get all on-exit screenshots for a study across all packages
    */
   async getStudyScreenshots(customerId: string, studyId: string): Promise<FileManifest[]> {
     logger.info("Getting study screenshots", { customerId, studyId });
@@ -61,11 +61,11 @@ export class DownloadService {
       for (const file of files) {
         const fileName = file.name;
         
-        // Filter for entry screenshots only
-        if (fileName.includes('entry') && fileName.endsWith('.png')) {
+        // Filter for exit screenshots only
+        if (fileName.includes('exit') && fileName.endsWith('.png')) {
           
           // Parse the file path to extract package info
-          // Expected format: survey-screenshots/{customerId}/{studyId}/{packageName}/{language}/{version}/form_{N}_entry_{timestamp}.png
+          // Expected format: survey-screenshots/{customerId}/{studyId}/{packageName}/{language}/{version}/form_{N}_exit_{timestamp}.png
           const pathParts = fileName.split('/');
           
           // Extract package info from path structure
@@ -135,7 +135,7 @@ export class DownloadService {
   }
 
   /**
-   * Get all on-entry screenshots for a specific package (all languages, latest version of each)
+   * Get all on-exit screenshots for a specific package (all languages, latest version of each)
    */
   async getPackageScreenshots(customerId: string, studyId: string, packageName: string): Promise<FileManifest[]> {
     logger.info("Getting package screenshots", { customerId, studyId, packageName });
@@ -214,11 +214,11 @@ export class DownloadService {
           pathParts: fileName.split('/')
         });
         
-        // Filter for entry screenshots only
-        if (fileName.includes('entry') && fileName.endsWith('.png')) {
+        // Filter for exit screenshots only
+        if (fileName.includes('exit') && fileName.endsWith('.png')) {
           
           // Parse the file path to extract language/version info
-          // Expected format: survey-screenshots/{customerId}/{studyId}/{packageName}/{language}/{version}/form_{N}_entry_{timestamp}.png
+          // Expected format: survey-screenshots/{customerId}/{studyId}/{packageName}/{language}/{version}/form_{N}_exit_{timestamp}.png
           const pathParts = fileName.split('/');
           
           // Extract language and version from path structure
@@ -678,9 +678,9 @@ export class DownloadService {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     
     if (request.packageName) {
-      return `${request.customerId}_${request.studyId}_${request.packageName}_on-entry-screenshots_${timestamp}.zip`;
+      return `${request.customerId}_${request.studyId}_${request.packageName}_on-exit-screenshots_${timestamp}.zip`;
     } else {
-      return `${request.customerId}_${request.studyId}_on-entry-screenshots_${timestamp}.zip`;
+      return `${request.customerId}_${request.studyId}_on-exit-screenshots_${timestamp}.zip`;
     }
   }
 }
