@@ -129,7 +129,7 @@ export class ScreenshotService {
       await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
       // Take screenshot
-      const filename = `form${formIndex + 1}_entry_${tuple.customerId}_${tuple.studyId}_${tuple.language}.png`;
+      const filename = `form${formIndex + 1}_entry_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${currentViewport.width}.png`;
       const screenshotPath = await this.saveScreenshot(page, filename, tuple, '#survey-body-container');
 
       // Restore original viewport
@@ -191,7 +191,7 @@ export class ScreenshotService {
       await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
       // Take screenshot
-      const filename = `form${formIndex + 1}_exit_${tuple.customerId}_${tuple.studyId}_${tuple.language}.png`;
+      const filename = `form${formIndex + 1}_exit_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${currentViewport.width}.png`;
       const screenshotPath = await this.saveScreenshot(page, filename, tuple, '#survey-body-container');
 
       // Restore original viewport
@@ -268,7 +268,9 @@ export class ScreenshotService {
 
       // Take screenshot of the CardBox frame containing the question
       const formNum = formIndex !== undefined ? formIndex + 1 : 1;
-      const filename = `form${formNum}_question${questionNum}_${tuple.customerId}_${tuple.studyId}_${tuple.language}.png`;
+      const currentViewport = page.viewport();
+      const width = currentViewport?.width || this.defaultViewport.width;
+      const filename = `form${formNum}_question${questionNum}_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${width}.png`;
       const screenshotPath = await this.saveScreenshot(page, filename, tuple, field.cardBoxSelector);
 
       logger.debug(`Question screenshot saved: ${filename}`);

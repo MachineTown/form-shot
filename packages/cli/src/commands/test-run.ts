@@ -16,6 +16,7 @@ export interface TestRunOptions {
   delay?: number;
   skipValidation?: boolean;
   leaveFiles?: boolean;
+  screenWidth?: number;
 }
 
 export async function runTests(options: TestRunOptions): Promise<TestRunResult> {
@@ -53,6 +54,11 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
     logger.info('Initializing browser...');
     await puppeteerManager.launch();
     const page = puppeteerManager.getPage();
+    
+    // Set viewport with custom width if provided
+    const viewportWidth = options.screenWidth || 767;
+    logger.info(`Setting viewport width to ${viewportWidth}px`);
+    await page.setViewport({ width: viewportWidth, height: 1024, deviceScaleFactor: 1 });
     
     // Navigate to the form
     logger.info(`Navigating to: ${options.url}`);
@@ -1204,7 +1210,9 @@ async function checkValidationMessages(page: any, field: any): Promise<{triggere
 }
 
 async function captureFieldScreenshot(page: any, field: any, testCase: any, outputDir: string): Promise<string> {
-  const filename = `test_${field.questionNumber.replace(/\./g, '_')}_${testCase.id}_${Date.now()}.png`;
+  const currentViewport = page.viewport();
+  const width = currentViewport?.width || 767;
+  const filename = `test_${field.questionNumber.replace(/\./g, '_')}_${testCase.id}_${Date.now()}_${width}.png`;
   const screenshotPath = join(outputDir, filename);
   
   try {
