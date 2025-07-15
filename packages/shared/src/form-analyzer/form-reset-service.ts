@@ -31,7 +31,7 @@ export class FormResetService {
     logger.info('Navigating to first form...');
     
     let attempts = 0;
-    const maxAttempts = 15; // Increase attempts for EQ-5D which has many forms
+    const maxAttempts = 50; // Increase attempts for EQ-5D which has many forms
     
     while (attempts < maxAttempts) {
       // Get detailed form info for logging

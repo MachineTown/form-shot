@@ -28,17 +28,20 @@ program
   .argument('<url>', 'URL of the survey form to analyze')
   .argument('<tuple>', 'Tuple string in format: [customer_id,study_id,package_name,language,version]')
   .option('--nav-delay <seconds>', 'Pause in seconds before clicking navigation buttons (default: 3)', '3')
+  .option('--screen-width <pixels>', 'Set viewport width in pixels (default: 767)', '767')
   .action(async (url: string, tupleString: string, options) => {
     try {
       // Parse the tuple string
       const tuple = parseTupleString(tupleString);
       const navDelay = parseInt(options.navDelay) * 1000; // Convert to milliseconds
+      const screenWidth = parseInt(options.screenWidth);
       
       logger.info(`Starting analysis of ${url}`);
       logger.info(`Tuple: ${JSON.stringify(tuple)}`);
       logger.info(`Navigation delay: ${options.navDelay} seconds`);
+      logger.info(`Screen width: ${screenWidth}px`);
       
-      await analyzeSurvey(url, tuple, navDelay);
+      await analyzeSurvey(url, tuple, navDelay, screenWidth);
     } catch (error) {
       logger.error('Analysis failed:', error);
       process.exit(1);
@@ -172,6 +175,7 @@ program
   .option('-d, --delay <ms>', 'Delay after field input (ms)', '500')
   .option('--skip-validation', 'Skip validation message detection')
   .option('--leave', 'Keep local output files after upload (default: remove)')
+  .option('--screen-width <pixels>', 'Set viewport width in pixels (default: 767)', '767')
   .action(async (analysisId: string, url: string, options) => {
     try {
       const testRunOptions = {
@@ -180,7 +184,8 @@ program
         outputDir: options.output,
         delay: parseInt(options.delay) || 500,
         skipValidation: options.skipValidation || false,
-        leaveFiles: options.leave || false
+        leaveFiles: options.leave || false,
+        screenWidth: parseInt(options.screenWidth) || 767
       };
       
       await runTests(testRunOptions);

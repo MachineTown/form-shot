@@ -71,15 +71,29 @@ docker run --rm -v ~/firestore.json:/app/firestore.json form-shot-runtime query 
 
 ### 1. Analyze Survey (with automatic test data generation)
 ```bash
-docker run --rm -v ./output:/app/output form-shot-runtime analyze <URL> <TUPLE>
+docker run --rm -v ./output:/app/output form-shot-runtime analyze <URL> <TUPLE> [OPTIONS]
 ```
 
 - **URL**: The survey form URL to analyze
 - **TUPLE**: Format `[customer_id,study_id,package_name,language,version]`
 
-Example:
+Options:
+- `--nav-delay <seconds>`: Pause in seconds before clicking navigation buttons (default: 3)
+- `--screen-width <pixels>`: Set viewport width in pixels (default: 767)
+
+Examples:
 ```bash
+# Basic usage
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1
+
+# With custom navigation delay (5 seconds)
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --nav-delay 5
+
+# With custom screen width (1024 pixels)
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --screen-width 1024
+
+# With both custom options
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --nav-delay 5 --screen-width 1024
 ```
 
 ### 2. Upload Analysis to Firestore (includes test data)
@@ -183,6 +197,7 @@ Options:
 - `-d, --delay <ms>`: Delay after field input in milliseconds (default: 500)
 - `--skip-validation`: Skip validation message detection
 - `--leave`: Keep local output files after upload (default: remove)
+- `--screen-width <pixels>`: Set viewport width in pixels (default: 767)
 
 Examples:
 ```bash
@@ -191,6 +206,9 @@ docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json 
 
 # Execute test run and keep local files
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ --leave
+
+# Execute test run with custom screen width (1024 pixels)
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ --screen-width 1024
 ```
 
 This will:

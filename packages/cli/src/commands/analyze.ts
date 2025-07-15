@@ -12,12 +12,12 @@ import {
   SurveyTuple
 } from '@form-shot/shared';
 
-export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: number = 3000): Promise<void> {
+export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: number = 3000, screenWidth: number = 767): Promise<void> {
   const puppeteerManager = new PuppeteerManager();
   const formDetector = new SurveyFormDetector();
   const formNavigator = new FormNavigator();
   const formResetService = new FormResetService();
-  const screenshotService = new ScreenshotService();
+  const screenshotService = new ScreenshotService({ width: screenWidth, height: 1024 });
   
   try {
     logger.info('Launching browser...');

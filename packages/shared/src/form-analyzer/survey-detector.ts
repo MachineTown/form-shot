@@ -707,10 +707,22 @@ export class SurveyFormDetector {
         console.log(`Processing ${uniqueSliders.length} potential VAS sliders`);
         // Check if there's a standalone VAS slider on this form
         uniqueSliders.forEach((slider, index) => {
-          // Find the container for this slider
-          let container = slider.parentElement;
-          while (container && !container.textContent?.trim() && container !== rightPanel) {
-            container = container.parentElement;
+          // Find the CardBox container for this slider
+          let cardBoxContainer = slider.parentElement;
+          while (cardBoxContainer && cardBoxContainer !== rightPanel) {
+            if (cardBoxContainer.className && cardBoxContainer.className.includes('CardBox')) {
+              break;
+            }
+            cardBoxContainer = cardBoxContainer.parentElement;
+          }
+          
+          // If no CardBox found, use the direct container with text content
+          let container = cardBoxContainer;
+          if (!container || container === rightPanel || !container.className?.includes('CardBox')) {
+            container = slider.parentElement;
+            while (container && !container.textContent?.trim() && container !== rightPanel) {
+              container = container.parentElement;
+            }
           }
           
           if (container && container !== rightPanel) {
@@ -724,15 +736,20 @@ export class SurveyFormDetector {
             // Generate selector for the slider
             const sliderSelector = generateSliderSelector(slider, index);
             
-            // Generate container selector
-            let containerSelector = '';
-            if (container.id) {
-              containerSelector = `#${CSS.escape(container.id)}`;
-            } else if (container.className) {
-              const className = container.className.split(' ')[0];
-              containerSelector = `.${className}`;
+            // Generate CardBox selector - prioritize CardBox if found
+            let cardBoxSelector = '';
+            if (cardBoxContainer && cardBoxContainer !== rightPanel && cardBoxContainer.className?.includes('CardBox')) {
+              cardBoxSelector = generateCardBoxSelector(cardBoxContainer, index, questionNumber);
             } else {
-              containerSelector = `#survey-body-container > *:nth-child(${Array.from(rightPanel.children).indexOf(container) + 1})`;
+              // Fallback to container selector if no CardBox found
+              if (container.id) {
+                cardBoxSelector = `#survey-body-container #${CSS.escape(container.id)}`;
+              } else if (container.className) {
+                const className = container.className.split(' ')[0];
+                cardBoxSelector = `#survey-body-container .${className}`;
+              } else {
+                cardBoxSelector = `#survey-body-container > *:nth-child(${Array.from(rightPanel.children).indexOf(container) + 1})`;
+              }
             }
             
             fieldGroups.push({
@@ -743,7 +760,7 @@ export class SurveyFormDetector {
               choices: undefined,
               selector: sliderSelector,
               screenshotPath: '',
-              cardBoxSelector: containerSelector
+              cardBoxSelector: cardBoxSelector
             });
           }
         });

@@ -76,6 +76,7 @@ Use technology in specs/ui-tech.md by preference
 
 *** Screenshots ***
 - The analyse tool should allow a specification of the viewport - default should be 767px x 1024px
+- The screen width can be customized using the --screen-width parameter in both analyze and test-run commands
 - Establish the vertical viewport for each form that will allow a screenshot to include all questions on the form
 - On display of a new form, before entering any data, extend the viewport to the maximum needed to include the full form and take a screenshot - this is the 'on-entry' screenshot. Return viewport to the original size.
 - After completing the questions, in preparation for navigation to next form, before pressing next button. Extend the viewport to the maximum needed to include the full form and take a screenshot - this is the 'on-exit' screenshot. Return viewport to the original size.
@@ -111,6 +112,12 @@ docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.q
 # With custom navigation delay (5 seconds instead of default 3 seconds):
 docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --nav-delay 5
 
+# With custom screen width (1024 pixels instead of default 767):
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --screen-width 1024
+
+# With both custom navigation delay and screen width:
+docker run --rm -v ./output:/app/output form-shot-runtime analyze https://main.qa.castoredc.org/survey/X9PAYLDQ PXL_KISQ,qa-test,sf36-gad7,en,v1 --nav-delay 5 --screen-width 1024
+
 2. Upload analysis to Firestore (includes test data):
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime upload /app/output/PXL_KISQ/qa-test/sf36-gad7/en/v1/analysis.json
 
@@ -143,6 +150,9 @@ docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json 
 
 # Execute test run and keep local files
 docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ --leave
+
+# Execute test run with custom screen width (1024 pixels):
+docker run --rm -v ./output:/app/output -v ~/firestore.json:/app/firestore.json form-shot-runtime test-run PXL_KISQ_qa-test_sf36-gad7_en_v1 https://main.qa.castoredc.org/survey/X9PAYLDQ --screen-width 1024
 
 11. Complete workflow (analyze + upload + test):
 # Step 1: Analyze (now includes automatic test data generation)
