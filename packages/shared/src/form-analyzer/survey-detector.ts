@@ -323,6 +323,29 @@ export class SurveyFormDetector {
           if (classNames.includes('dropdown') || classNames.includes('select')) {
             return 'dropdown';
           }
+          
+          // Check for autocomplete dropdown indicators (case-insensitive)
+          const hasAutocomplete = inputEl.hasAttribute('aria-autocomplete') || 
+                                 inputEl.getAttribute('autocomplete') === 'off' ||
+                                 inputEl.hasAttribute('list') ||
+                                 classNames.includes('autocomplete') ||
+                                 classNames.includes('typeahead') ||
+                                 placeholder.toLowerCase().includes('type to search') ||
+                                 placeholder.includes('search') ||
+                                 value.toLowerCase().includes('type to search');
+          
+          // Check if this might be a weight field with autocomplete
+          const isWeightField = placeholder.includes('weight') || 
+                               placeholder.includes('kg') || 
+                               placeholder.includes('lbs') ||
+                               placeholder.includes('pounds') ||
+                               ariaLabel.includes('weight') ||
+                               name.includes('weight') ||
+                               id.includes('weight');
+          
+          if (hasAutocomplete || isWeightField) {
+            return 'autocomplete_dropdown';
+          }
         }
         
         const type = (input as HTMLInputElement).type?.toLowerCase();
@@ -596,6 +619,15 @@ export class SurveyFormDetector {
                  firstInput.placeholder?.includes('mm') ||
                  firstInput.placeholder?.includes('yyyy'))) {
               inputType = 'date';
+            }
+            
+            // Check if this is likely a weight field with autocomplete based on question text
+            if (questionLower.includes('weight') || 
+                questionLower.includes('weigh') ||
+                rawTextLower.includes('kg') ||
+                rawTextLower.includes('lbs') ||
+                rawTextLower.includes('pounds')) {
+              inputType = 'autocomplete_dropdown';
             }
           }
           

@@ -22,7 +22,7 @@ export interface SurveyForm {
 export interface SurveyField {
   questionNumber: string;
   questionText: string;
-  inputType: 'text' | 'radio' | 'dropdown' | 'checkbox' | 'textarea' | 'number' | 'date' | 'email' | 'phone' | 'url' | 'VAS' | 'NRS';
+  inputType: 'text' | 'radio' | 'dropdown' | 'checkbox' | 'textarea' | 'number' | 'date' | 'email' | 'phone' | 'url' | 'VAS' | 'NRS' | 'autocomplete_dropdown';
   isRequired: boolean;
   choices?: string[];
   screenshotPath: string;
@@ -66,6 +66,7 @@ export interface TestCase {
     reviewCount: number;
     lastReviewed?: string;
   };
+  metadata?: any; // For field-specific test case metadata
 }
 
 export interface TestCaseProvenance {

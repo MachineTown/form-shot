@@ -595,7 +595,7 @@ export class FormNavigator {
         
       case 'radio':
         // For radio buttons, we need to find the radio group and select by index
-        const radioIndex = typeof testValue === 'number' ? testValue : 0;
+        const radioIndex = typeof testValue === 'number' ? testValue : parseInt(String(testValue), 10) || 0;
         
         // Try multiple approaches to select radio buttons
         let radioSelected = false;
@@ -915,7 +915,7 @@ export class FormNavigator {
         // Handle Numeric Rating Scale (buttons with numeric values)
         logger.info(`Handling NRS field ${field.questionNumber}`);
         try {
-          const nrsIndex = typeof testValue === 'number' ? testValue : 0;
+          const nrsIndex = typeof testValue === 'number' ? testValue : parseInt(String(testValue), 10) || 0;
           
           // Try multiple strategies to find and click NRS buttons
           let nrsClicked = false;
@@ -992,8 +992,52 @@ export class FormNavigator {
         break;
         
       case 'dropdown':
-        // For dropdowns, select by index
-        const dropdownIndex = typeof testValue === 'number' ? testValue : 0;
+        // Check if this might actually be an autocomplete dropdown based on test value
+        const numericTestValue = parseInt(String(testValue), 10);
+        const isLikelyAutocomplete = !isNaN(numericTestValue) && numericTestValue > 10 && 
+                                    (!field.choices || field.choices.length === 0);
+        
+        if (isLikelyAutocomplete) {
+          // Treat as autocomplete dropdown - type the value
+          logger.info(`Treating dropdown ${field.selector} as autocomplete due to numeric value ${numericTestValue}`);
+          await page.click(field.selector, { clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          await page.type(field.selector, String(testValue));
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Try to select first dropdown option if it appears
+          await page.evaluate(() => {
+            const optionSelectors = [
+              '[role="option"]',
+              '[class*="option"]',
+              '[class*="Option"]',
+              'li[role="option"]',
+              'div[role="option"]',
+              '[aria-selected]'
+            ];
+            
+            for (const selector of optionSelectors) {
+              const options = document.querySelectorAll(selector);
+              if (options.length > 0) {
+                const option = options[0] as HTMLElement;
+                const style = window.getComputedStyle(option);
+                if (style.display !== 'none' && style.visibility !== 'hidden') {
+                  option.click();
+                  return true;
+                }
+              }
+            }
+            
+            return false;
+          });
+          
+          // Press Enter as fallback
+          await page.keyboard.press('Enter');
+          break;
+        }
+        
+        // For regular dropdowns, select by index
+        const dropdownIndex = typeof testValue === 'number' ? testValue : parseInt(String(testValue), 10) || 0;
         
         try {
           // First try native select element
@@ -1006,7 +1050,7 @@ export class FormNavigator {
           try {
             // Click the dropdown to open it
             await page.click(field.selector);
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Increased wait time
             
             // Look for dropdown options - they might be in a separate container
             const optionSelected = await page.evaluate((dropdownIdx) => {
@@ -1014,18 +1058,32 @@ export class FormNavigator {
               const optionSelectors = [
                 '[role="option"]',
                 '[class*="option"]',
+                '[class*="Option"]',
                 '[class*="dropdown-item"]',
+                '[class*="dropdown-option"]',
                 '[class*="select-item"]',
+                '[class*="select-option"]',
+                '[class*="menu-item"]',
+                '[class*="list-item"]',
                 'li[role="option"]',
-                'div[role="option"]'
+                'div[role="option"]',
+                'ul[role="listbox"] li',
+                '.dropdown-menu li',
+                '.dropdown-menu div',
+                '[data-value]',
+                '[aria-selected]'
               ];
               
               for (const selector of optionSelectors) {
                 const options = document.querySelectorAll(selector);
                 if (options.length > dropdownIdx) {
                   const option = options[dropdownIdx] as HTMLElement;
-                  option.click();
-                  return true;
+                  // Make sure the option is visible
+                  const style = window.getComputedStyle(option);
+                  if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    option.click();
+                    return true;
+                  }
                 }
               }
               
@@ -1034,9 +1092,32 @@ export class FormNavigator {
             
             if (!optionSelected) {
               logger.warn(`Could not find dropdown options for ${field.selector}`);
-              // As a fallback, type the value if we have choices
-              if (field.choices && field.choices[dropdownIndex]) {
-                await page.type(field.selector, field.choices[dropdownIndex]);
+              
+              // Try keyboard navigation as a fallback
+              try {
+                logger.info(`Trying keyboard navigation for dropdown ${field.selector}`);
+                await page.focus(field.selector);
+                
+                // Press down arrow to open dropdown and navigate
+                await page.keyboard.press('ArrowDown');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Press down arrow to navigate to desired option
+                for (let i = 0; i < dropdownIndex; i++) {
+                  await page.keyboard.press('ArrowDown');
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                // Press Enter to select
+                await page.keyboard.press('Enter');
+                logger.info(`Selected option ${dropdownIndex} using keyboard navigation`);
+              } catch (keyboardError) {
+                logger.warn(`Keyboard navigation failed: ${keyboardError}`);
+                
+                // As a last resort, type the value if we have choices
+                if (field.choices && field.choices[dropdownIndex]) {
+                  await page.type(field.selector, field.choices[dropdownIndex]);
+                }
               }
             } else {
               logger.info(`Selected dropdown option ${dropdownIndex} using custom dropdown`);
@@ -1044,6 +1125,72 @@ export class FormNavigator {
           } catch (customError) {
             logger.error(`Failed to handle custom dropdown: ${customError}`);
           }
+        }
+        break;
+        
+      case 'autocomplete_dropdown':
+        // For autocomplete dropdowns (e.g., weight fields), type first then select
+        logger.info(`Handling autocomplete dropdown field ${field.questionNumber}`);
+        try {
+          // Clear any existing value
+          await page.click(field.selector, { clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          
+          // Type the numeric value (weight)
+          const typedValue = String(testValue);
+          logger.info(`Typing value "${typedValue}" into autocomplete dropdown`);
+          await page.type(field.selector, typedValue);
+          
+          // Wait for dropdown to appear
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Select the first option that appears
+          const optionSelected = await page.evaluate(() => {
+            // Common patterns for dropdown options that appear after typing
+            const optionSelectors = [
+              '[role="option"]',
+              '[class*="option"]',
+              '[class*="dropdown-item"]',
+              '[class*="select-item"]',
+              '[class*="menu-item"]',
+              '[class*="list-item"]',
+              'li[role="option"]',
+              'div[role="option"]',
+              'ul[role="listbox"] li',
+              '[aria-selected]'
+            ];
+            
+            for (const selector of optionSelectors) {
+              const options = document.querySelectorAll(selector);
+              if (options.length > 0) {
+                // Click the first visible option
+                for (const option of options) {
+                  const elem = option as HTMLElement;
+                  const style = window.getComputedStyle(elem);
+                  if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    elem.click();
+                    return true;
+                  }
+                }
+              }
+            }
+            
+            return false;
+          });
+          
+          if (optionSelected) {
+            logger.info(`Selected first option from autocomplete dropdown`);
+          } else {
+            logger.warn(`Could not find dropdown options after typing "${typedValue}"`);
+            // Try pressing Enter as a fallback
+            await page.keyboard.press('Enter');
+          }
+          
+          // Wait for dropdown to close
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+        } catch (error) {
+          logger.error(`Failed to handle autocomplete dropdown field ${field.questionNumber}:`, error);
         }
         break;
         

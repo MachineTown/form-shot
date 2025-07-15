@@ -472,6 +472,62 @@ export class TestDataGenerator {
         }
       },
       {
+        id: 'weight_validation_v1',
+        fieldType: 'weight',
+        version: '1.0.0',
+        description: 'Weight field test cases for autocomplete dropdowns',
+        testCases: [
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '70',
+            description: 'Average adult weight (kg)',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '150',
+            description: 'Average adult weight (lbs)',
+            weight: 9
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '85',
+            description: 'Above average adult weight (kg)',
+            weight: 8
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '200',
+            description: 'High weight value',
+            weight: 7
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '45',
+            description: 'Low adult weight',
+            weight: 7
+          },
+          {
+            type: 'edge',
+            valueType: 'static',
+            value: '1',
+            description: 'Minimum weight for dropdown trigger',
+            weight: 6
+          }
+        ],
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          author: 'system',
+          tags: ['weight', 'measurement', 'autocomplete', 'health']
+        }
+      },
+      {
         id: 'vas_slider_v1',
         fieldType: 'VAS',
         version: '1.0.0',
@@ -563,6 +619,11 @@ export class TestDataGenerator {
     if ((field.inputType === 'radio' || field.inputType === 'dropdown') && field.choices) {
       return this.generateChoiceBasedTestCases(field, detection);
     }
+    
+    // Handle autocomplete dropdowns (weight fields)
+    if (field.inputType === 'autocomplete_dropdown') {
+      return this.generateAutocompleteTestCases(field, detection);
+    }
 
     // Handle VAS sliders specifically
     if (field.inputType === 'VAS') {
@@ -642,6 +703,27 @@ export class TestDataGenerator {
         testCases.push(testCase);
       });
     }
+
+    return testCases;
+  }
+
+  private generateAutocompleteTestCases(field: SurveyField, detection: DetectionResult): TestCase[] {
+    const testCases: TestCase[] = [];
+    
+    // Use weight-specific template for autocomplete dropdowns
+    const templateId = detection.template || 'weight_validation_v1';
+    const template = this.templates.get(templateId) || this.templates.get('weight_validation_v1')!;
+    
+    template.testCases.forEach((templateCase, index) => {
+      const testCase = this.createTestCaseFromTemplate(templateCase, field, index);
+      // Add metadata for autocomplete behavior
+      testCase.metadata = {
+        requiresTyping: true,
+        dropdownSelectionIndex: 0, // Always select first option after typing
+        inputType: 'autocomplete_dropdown'
+      };
+      testCases.push(testCase);
+    });
 
     return testCases;
   }

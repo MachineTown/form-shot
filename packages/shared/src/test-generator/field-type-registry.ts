@@ -185,6 +185,30 @@ export class FieldTypeRegistry {
           totalMatches: 0,
           successRate: 1.0
         }
+      },
+      {
+        id: 'weight_detection_v1',
+        name: 'Weight Field Detection',
+        priority: 87,
+        patterns: {
+          questionText: [
+            /\b(weight|weigh|peso|gewicht|poids|体重)\b/i,
+            /\b(how\s+much\s+do\s+you\s+weigh)\b/i,
+            /\b(body\s+weight|current\s+weight)\b/i,
+            /\b(kg|kilograms?|lbs?|pounds?)\b/i
+          ],
+          inputAttributes: {
+            type: /^(text|number|autocomplete_dropdown)$/i
+          }
+        },
+        testDataTemplate: 'weight_validation_v1',
+        confidence: 88,
+        version: '1.0.0',
+        createdAt: new Date().toISOString(),
+        usage: {
+          totalMatches: 0,
+          successRate: 1.0
+        }
       }
     ];
 
@@ -319,6 +343,8 @@ export class FieldTypeRegistry {
       case 'dropdown':
       case 'select':
         return 'dropdown';
+      case 'autocomplete_dropdown':
+        return 'weight'; // Default to weight for autocomplete dropdowns
       default:
         return 'general_text';
     }

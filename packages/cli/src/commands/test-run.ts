@@ -457,6 +457,10 @@ async function applyTestCaseValue(page: any, field: any, testCase: any): Promise
       await applySelectValue(page, field, testCase);
       break;
       
+    case 'autocomplete_dropdown':
+      await applyAutocompleteDropdownValue(page, field, testCase);
+      break;
+      
     case 'text':
     case 'email':
     case 'number':
@@ -946,6 +950,87 @@ async function applySelectValue(page: any, field: any, testCase: any): Promise<v
   }
   
   logger.debug(`Selected option "${testCase.value}" for field ${field.questionNumber}`);
+}
+
+async function applyAutocompleteDropdownValue(page: any, field: any, testCase: any): Promise<void> {
+  // For autocomplete dropdowns (e.g., weight fields), type first then select
+  const inputSelector = field.selector || `${field.cardBoxSelector} input`;
+  
+  logger.info(`Handling autocomplete dropdown field ${field.questionNumber} with value "${testCase.value}"`);
+  
+  try {
+    // Click to focus and clear any existing value
+    await page.click(inputSelector);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyA');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    
+    // Type the value (e.g., "1" for weight)
+    const typedValue = String(testCase.value);
+    await page.type(inputSelector, typedValue);
+    
+    logger.debug(`Typed "${typedValue}" into autocomplete dropdown`);
+    
+    // Wait for dropdown options to appear
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Try to select the first dropdown option
+    const optionSelected = await page.evaluate(() => {
+      // Common patterns for dropdown options that appear after typing
+      const optionSelectors = [
+        '[role="option"]',
+        '[role="listbox"] [role="option"]',
+        '[class*="option"]',
+        '[class*="dropdown-item"]',
+        '[class*="select-item"]',
+        '[class*="menu-item"]',
+        '[class*="list-item"]',
+        'li[role="option"]',
+        'div[role="option"]',
+        'ul[role="listbox"] li',
+        '[aria-selected]',
+        '.dropdown-menu .dropdown-item',
+        '.select-dropdown li'
+      ];
+      
+      for (const selector of optionSelectors) {
+        const options = document.querySelectorAll(selector);
+        if (options.length > 0) {
+          // Click the first visible option
+          for (const option of options) {
+            const elem = option as HTMLElement;
+            const style = window.getComputedStyle(elem);
+            if (style.display !== 'none' && 
+                style.visibility !== 'hidden' && 
+                elem.offsetWidth > 0 && 
+                elem.offsetHeight > 0) {
+              elem.click();
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    });
+    
+    if (optionSelected) {
+      logger.info(`Selected first option from autocomplete dropdown for field ${field.questionNumber}`);
+    } else {
+      logger.warn(`Could not find dropdown options after typing "${typedValue}", trying Enter key`);
+      // Press Enter as a fallback
+      await page.keyboard.press('Enter');
+    }
+    
+    // Wait for dropdown to close and value to be set
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+  } catch (error) {
+    logger.error(`Failed to handle autocomplete dropdown field ${field.questionNumber}:`, error);
+    // Fallback to treating it as a regular text field
+    await applyTextValue(page, field, testCase);
+  }
 }
 
 async function applyTextValue(page: any, field: any, testCase: any): Promise<void> {
