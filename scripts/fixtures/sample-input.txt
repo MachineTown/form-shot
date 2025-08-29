@@ -1,0 +1,11 @@
+# Sample input file for batch survey analysis
+# Format: width,customer_id,study_id,package_name,language,version,survey_url
+
+# Standard surveys
+1024,PXL_KISQ,qa-test,sf36-gad7,en,v1,https://main.qa.castoredc.org/survey/X9PAYLDQ
+767,CUSTOMER2,study-2,package-2,es,v2,https://example.com/survey/ABC123
+1200,CUSTOMER3,study-3,package-3,fr,v1,https://example.com/survey/DEF456
+
+# Different screen widths
+800,TEST_CUSTOMER,pilot-study,questionnaire-1,en,v1,https://test.castoredc.com/survey/TEST123
+1440,BIG_CUSTOMER,production-study,comprehensive-survey,de,v2,https://prod.castoredc.com/survey/PROD456

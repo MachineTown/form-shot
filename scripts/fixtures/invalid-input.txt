@@ -1,0 +1,20 @@
+# Invalid input file for testing error handling
+# This file contains various invalid formats
+
+# Valid line for comparison
+1024,PXL_KISQ,qa-test,sf36-gad7,en,v1,https://main.qa.castoredc.org/survey/X9PAYLDQ
+
+# Invalid lines below:
+# Too few parts (only 5 instead of 7)
+1024,PXL_KISQ,qa-test,sf36-gad7,en
+
+# Empty line
+
+# Another valid line
+767,CUSTOMER2,study-2,package-2,es,v2,https://example.com/survey/ABC123
+
+# Invalid - missing URL
+800,TEST,study,package,en,v1
+
+# URL with commas (should be handled correctly)
+1024,COMMA_TEST,study,package,en,v1,https://example.com/survey?param1=a,b&param2=c,d
