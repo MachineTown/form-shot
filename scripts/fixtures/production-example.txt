@@ -1,0 +1,22 @@
+# Production survey analysis example
+# Format: width,customer_id,study_id,package_name,language,version,survey_url
+
+# Multi-language SF-36 survey analysis
+767,HEALTH_CO,mental-health,sf36,en,v1,https://surveys.healthco.com/sf36/en
+767,HEALTH_CO,mental-health,sf36,fr,v1,https://surveys.healthco.com/sf36/fr
+767,HEALTH_CO,mental-health,sf36,es,v1,https://surveys.healthco.com/sf36/es
+767,HEALTH_CO,mental-health,sf36,de,v1,https://surveys.healthco.com/sf36/de
+
+# GAD-7 Anxiety screening
+1024,CLINIC_A,anxiety-study,gad7,en,v2,https://clinic-a.example.com/gad7
+1024,CLINIC_A,anxiety-study,gad7,pt,v2,https://clinic-a.example.com/gad7-pt
+
+# PHQ-9 Depression screening with different viewport widths
+767,RESEARCH_ORG,depression,phq9,en,v3,https://research.org/surveys/phq9
+800,RESEARCH_ORG,depression,phq9,en,v3,https://research.org/surveys/phq9
+1024,RESEARCH_ORG,depression,phq9,en,v3,https://research.org/surveys/phq9
+1280,RESEARCH_ORG,depression,phq9,en,v3,https://research.org/surveys/phq9
+
+# COVID-19 symptom tracker
+767,COVID_TRACK,symptoms,daily-check,en,v1,https://covidtrack.org/daily
+767,COVID_TRACK,symptoms,weekly-check,en,v1,https://covidtrack.org/weekly

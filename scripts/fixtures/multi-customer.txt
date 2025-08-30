@@ -1,0 +1,28 @@
+# Multi-customer survey batch
+# Demonstrates processing surveys from different organizations
+
+# Hospital Network - Patient satisfaction surveys
+767,HOSPITAL_NET,patient-satisfaction,intake-form,en,v1,https://hospital.example.com/intake
+767,HOSPITAL_NET,patient-satisfaction,discharge-survey,en,v1,https://hospital.example.com/discharge
+1024,HOSPITAL_NET,patient-satisfaction,followup-30day,en,v1,https://hospital.example.com/followup30
+
+# University Research - Psychology studies
+800,UNIV_PSYCH,stress-study,perceived-stress,en,v2,https://research.edu/pss
+800,UNIV_PSYCH,stress-study,coping-inventory,en,v2,https://research.edu/cope
+800,UNIV_PSYCH,sleep-study,sleep-quality,en,v1,https://research.edu/psqi
+
+# Pharmaceutical Trial - Drug efficacy monitoring
+1024,PHARMA_TRIAL,drug-abc123,baseline,en,v3,https://trials.pharma.com/abc123/baseline
+1024,PHARMA_TRIAL,drug-abc123,week-1,en,v3,https://trials.pharma.com/abc123/week1
+1024,PHARMA_TRIAL,drug-abc123,week-4,en,v3,https://trials.pharma.com/abc123/week4
+1024,PHARMA_TRIAL,drug-abc123,week-12,en,v3,https://trials.pharma.com/abc123/week12
+
+# Government Health Survey - Population health monitoring
+767,GOV_HEALTH,population-health,demographics,en,v1,https://health.gov/survey/demo
+767,GOV_HEALTH,population-health,lifestyle,en,v1,https://health.gov/survey/lifestyle
+767,GOV_HEALTH,population-health,medical-history,en,v1,https://health.gov/survey/medhist
+
+# Insurance Company - Claim assessment forms
+1280,INSURANCE_CO,claims,initial-report,en,v2,https://claims.insurance.com/initial
+1280,INSURANCE_CO,claims,medical-documentation,en,v2,https://claims.insurance.com/medical
+1280,INSURANCE_CO,claims,final-assessment,en,v2,https://claims.insurance.com/final

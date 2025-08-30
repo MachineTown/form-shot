@@ -1,0 +1,32 @@
+# Stress test input file - 20 concurrent analyses
+# Tests maximum concurrent job handling
+
+# Customer 1 - Multiple forms
+767,STRESS_TEST,load-test-1,form-a,en,v1,https://httpbin.org/delay/5
+800,STRESS_TEST,load-test-1,form-b,en,v1,https://httpbin.org/delay/3
+1024,STRESS_TEST,load-test-1,form-c,en,v1,https://httpbin.org/delay/4
+1280,STRESS_TEST,load-test-1,form-d,en,v1,https://httpbin.org/delay/2
+
+# Customer 2 - Language variations  
+767,STRESS_TEST,load-test-2,survey-x,en,v1,https://httpbin.org/delay/6
+767,STRESS_TEST,load-test-2,survey-x,fr,v1,https://httpbin.org/delay/5
+767,STRESS_TEST,load-test-2,survey-x,es,v1,https://httpbin.org/delay/4
+767,STRESS_TEST,load-test-2,survey-x,de,v1,https://httpbin.org/delay/3
+
+# Customer 3 - Version testing
+767,STRESS_TEST,load-test-3,questionnaire,en,v1,https://httpbin.org/delay/2
+767,STRESS_TEST,load-test-3,questionnaire,en,v2,https://httpbin.org/delay/3
+767,STRESS_TEST,load-test-3,questionnaire,en,v3,https://httpbin.org/delay/4
+767,STRESS_TEST,load-test-3,questionnaire,en,v4,https://httpbin.org/delay/5
+
+# Customer 4 - Mixed configurations
+800,STRESS_TEST,load-test-4,assessment-a,en,v1,https://httpbin.org/delay/3
+900,STRESS_TEST,load-test-4,assessment-b,fr,v1,https://httpbin.org/delay/4
+1000,STRESS_TEST,load-test-4,assessment-c,es,v2,https://httpbin.org/delay/5
+1100,STRESS_TEST,load-test-4,assessment-d,de,v2,https://httpbin.org/delay/6
+
+# Customer 5 - Quick tests
+767,STRESS_TEST,quick-test,form-1,en,v1,https://httpbin.org/status/200
+767,STRESS_TEST,quick-test,form-2,en,v1,https://httpbin.org/status/201
+767,STRESS_TEST,quick-test,form-3,en,v1,https://httpbin.org/status/202
+767,STRESS_TEST,quick-test,form-4,en,v1,https://httpbin.org/status/204

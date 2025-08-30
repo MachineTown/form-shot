@@ -1,0 +1,3 @@
+# Quick test file for compression feature
+767,COMPRESS,test,form1,en,v1,https://httpbin.org/status/200
+800,COMPRESS,test,form2,en,v1,https://httpbin.org/status/201

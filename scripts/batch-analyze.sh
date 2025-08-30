@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Batch Survey Analysis Script
+# Batch Survey Analysis Script - Working Version
 # Executes multiple form-shot analyses in parallel using Docker containers
-# Usage: ./batch-analyze.sh <input_file>
+# Usage: ./batch-analyze-working.sh <input_file>
 
 # Configuration
 LOG_DIR="./logs"
@@ -11,6 +11,22 @@ INPUT_FILE=""
 MAX_CONCURRENT_JOBS=10
 BACKGROUND_PIDS=()
 DOCKER_IMAGE="form-shot-runtime"
+PROCESS_TIMEOUT=600  # 10 minutes per process
+
+# Performance tuning
+ENABLE_COMPRESSION=false  # Compress logs after completion
+ENABLE_METRICS=false      # Track performance metrics
+START_TIME=$(date +%s)    # Track total execution time
+
+# Process tracking
+declare -A PROCESS_STATUS  # Track status of each process
+declare -A PROCESS_CONFIG  # Track configuration for each process
+declare -A PROCESS_START_TIME  # Track start time for each process
+declare -A PROCESS_END_TIME    # Track end time for each process
+TOTAL_PROCESSES=0
+COMPLETED_PROCESSES=0
+SUCCESSFUL_PROCESSES=0
+FAILED_PROCESSES=0
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,19 +55,25 @@ log_success() {
 # Usage information
 show_usage() {
     cat << EOF
-Usage: $SCRIPT_NAME <input_file>
+Usage: $SCRIPT_NAME [OPTIONS] <input_file>
 
 Batch execution of form-shot survey analysis using Docker containers.
 
 Arguments:
   input_file    Text file containing analysis configurations
 
+Options:
+  -j, --jobs NUM        Maximum concurrent jobs (default: $MAX_CONCURRENT_JOBS)
+  -t, --timeout SECS    Timeout per process in seconds (default: $PROCESS_TIMEOUT)
+  -c, --compress        Compress log files after completion
+  -m, --metrics         Enable performance metrics tracking
+  -h, --help            Show this help message
+
 Input file format (one per line):
   <width>,<customer_id>,<study_id>,<package_name>,<language>,<version>,<survey_url>
 
-Example input file:
+Example:
   1024,PXL_KISQ,qa-test,sf36-gad7,en,v1,https://main.qa.castoredc.org/survey/X9PAYLDQ
-  767,CUSTOMER2,study-2,package-2,es,v2,https://example.com/survey/ABC123
 
 EOF
 }
@@ -62,9 +84,27 @@ convert_tuple_to_filename() {
     echo "${tuple//,/-}.log"
 }
 
+# Simple validation functions
+validate_width() {
+    local width="$1"
+    if [[ ! "$width" =~ ^[0-9]+$ ]] || [[ $width -le 0 ]]; then
+        return 1
+    fi
+    return 0
+}
+
+validate_url() {
+    local url="$1"
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        return 1
+    fi
+    return 0
+}
+
 # Parse a single line from input file
 parse_line() {
     local line="$1"
+    local line_num="$2"
     
     # Remove leading/trailing whitespace
     line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -73,6 +113,7 @@ parse_line() {
     IFS=',' read -ra PARTS <<< "$line"
     
     if [[ ${#PARTS[@]} -lt 7 ]]; then
+        log_error "Line $line_num: Invalid format - expected at least 7 comma-separated parts"
         return 1
     fi
     
@@ -85,6 +126,17 @@ parse_line() {
         for ((i=7; i<${#PARTS[@]}; i++)); do
             url="${url},${PARTS[i]}"
         done
+    fi
+    
+    # Basic validation
+    if ! validate_width "$width"; then
+        log_error "Line $line_num: Invalid width '$width'"
+        return 1
+    fi
+    
+    if ! validate_url "$url"; then
+        log_error "Line $line_num: Invalid URL '$url'"
+        return 1
     fi
     
     echo "$width|$tuple|$url"
@@ -103,14 +155,13 @@ setup_directories() {
     fi
 }
 
-# Construct Docker command for analysis
-build_docker_command() {
-    local width="$1"
-    local tuple="$2" 
-    local url="$3"
-    local log_file="$4"
-    
-    echo "docker run --rm -v ./output:/app/output $DOCKER_IMAGE analyze \"$url\" \"$tuple\" --screen-width $width"
+# Check if Docker image exists
+check_docker_image() {
+    if ! docker image inspect "$DOCKER_IMAGE" >/dev/null 2>&1; then
+        log_error "Docker image '$DOCKER_IMAGE' not found"
+        log_error "Please build the image first: pnpm build && docker build -f Dockerfile.runtime -t $DOCKER_IMAGE ."
+        exit 1
+    fi
 }
 
 # Execute Docker command in background with logging
@@ -121,77 +172,228 @@ execute_analysis_background() {
     local log_filename="$4"
     local log_filepath="$LOG_DIR/$log_filename"
     
-    # Build the Docker command
-    local docker_cmd=$(build_docker_command "$width" "$tuple" "$url" "$log_filepath")
-    
-    log_info "Starting analysis: $tuple (width: $width)"
-    log_info "Command: $docker_cmd"
-    log_info "Logging to: $log_filepath"
+    log_info "Starting analysis: $tuple"
     
     # Execute in background and capture PID
     (
-        echo "=== Starting analysis at $(date) ===" 
+        echo "=== Starting analysis at $(date) ==="
         echo "Width: $width"
-        echo "Tuple: $tuple" 
+        echo "Tuple: $tuple"
         echo "URL: $url"
-        echo "Command: $docker_cmd"
         echo "=================================="
         echo ""
         
-        # Execute the Docker command
-        eval "$docker_cmd" 2>&1
+        # Execute the Docker command with timeout
+        timeout $PROCESS_TIMEOUT docker run --rm -v ./output:/app/output "$DOCKER_IMAGE" analyze "$url" "$tuple" --screen-width "$width" 2>&1
         local exit_code=$?
         
         echo ""
-        echo "=== Analysis completed at $(date) ===" 
+        echo "=== Analysis completed at $(date) ==="
         echo "Exit code: $exit_code"
-        echo "======================================="
         
         exit $exit_code
     ) > "$log_filepath" 2>&1 &
     
     local bg_pid=$!
     BACKGROUND_PIDS+=("$bg_pid")
+    PROCESS_STATUS["$bg_pid"]="running"
+    PROCESS_CONFIG["$bg_pid"]="$tuple"
+    PROCESS_START_TIME["$bg_pid"]=$(date +%s)
+    ((TOTAL_PROCESSES++))
     
-    log_info "Started background process PID: $bg_pid"
+    log_info "Started process PID: $bg_pid for $tuple"
     return 0
 }
 
-# Check if Docker image exists
-check_docker_image() {
-    if ! docker image inspect "$DOCKER_IMAGE" >/dev/null 2>&1; then
-        log_error "Docker image '$DOCKER_IMAGE' not found"
-        log_error "Please build the image first: pnpm build && docker build -f Dockerfile.runtime -t $DOCKER_IMAGE ."
-        exit 1
-    fi
-}
-
-# Wait for active jobs to finish if at max capacity
+# Wait for a job slot to become available
 wait_for_job_slot() {
     while [[ ${#BACKGROUND_PIDS[@]} -ge $MAX_CONCURRENT_JOBS ]]; do
-        log_info "At maximum concurrent jobs ($MAX_CONCURRENT_JOBS), waiting for completion..."
+        log_info "At maximum concurrent jobs ($MAX_CONCURRENT_JOBS), waiting..."
         
         # Check for completed jobs
         local new_pids=()
-        local completed_count=0
-        
         for pid in "${BACKGROUND_PIDS[@]}"; do
             if kill -0 "$pid" 2>/dev/null; then
-                # Process still running
                 new_pids+=("$pid")
             else
                 # Process completed
-                ((completed_count++))
+                wait "$pid"
+                local exit_code=$?
+                ((COMPLETED_PROCESSES++))
+                
+                if [[ $exit_code -eq 0 ]]; then
+                    ((SUCCESSFUL_PROCESSES++))
+                    PROCESS_STATUS["$pid"]="success"
+                    log_success "Process $pid completed successfully (${PROCESS_CONFIG[$pid]})"
+                else
+                    ((FAILED_PROCESSES++))
+                    PROCESS_STATUS["$pid"]="failed"
+                    log_error "Process $pid failed with exit code $exit_code (${PROCESS_CONFIG[$pid]})"
+                fi
             fi
         done
         
-        if [[ $completed_count -gt 0 ]]; then
-            log_info "Completed $completed_count job(s), continuing..."
-            BACKGROUND_PIDS=("${new_pids[@]}")
-        else
-            # No jobs completed, wait a bit
+        BACKGROUND_PIDS=("${new_pids[@]}")
+        
+        if [[ ${#BACKGROUND_PIDS[@]} -ge $MAX_CONCURRENT_JOBS ]]; then
             sleep 2
         fi
+    done
+}
+
+# Wait for all remaining processes to complete
+wait_for_all_processes() {
+    if [[ ${#BACKGROUND_PIDS[@]} -eq 0 ]]; then
+        log_info "No remaining processes to wait for"
+        return
+    fi
+    
+    log_info "Waiting for ${#BACKGROUND_PIDS[@]} remaining process(es) to complete..."
+    
+    for pid in "${BACKGROUND_PIDS[@]}"; do
+        log_info "Waiting for PID $pid (${PROCESS_CONFIG[$pid]})..."
+        wait "$pid" 2>/dev/null
+        local exit_code=$?
+        ((COMPLETED_PROCESSES++))
+        
+        if [[ $exit_code -eq 0 ]]; then
+            ((SUCCESSFUL_PROCESSES++))
+            PROCESS_STATUS["$pid"]="success"
+            log_success "Process $pid completed successfully (${PROCESS_CONFIG[$pid]})"
+        elif [[ $exit_code -eq 124 ]]; then
+            ((FAILED_PROCESSES++))
+            PROCESS_STATUS["$pid"]="timeout"
+            log_warn "Process $pid timed out after ${PROCESS_TIMEOUT}s (${PROCESS_CONFIG[$pid]})"
+        else
+            ((FAILED_PROCESSES++))
+            PROCESS_STATUS["$pid"]="failed"
+            log_error "Process $pid failed with exit code $exit_code (${PROCESS_CONFIG[$pid]})"
+        fi
+    done
+    
+    log_info "All processes completed"
+}
+
+# Generate summary report
+generate_summary_report() {
+    local summary_file="$LOG_DIR/batch-summary-$(date +%Y%m%d-%H%M%S).txt"
+    local end_time=$(date +%s)
+    local total_time=$((end_time - START_TIME))
+    local minutes=$((total_time / 60))
+    local seconds=$((total_time % 60))
+    
+    {
+        echo "===== BATCH ANALYSIS EXECUTION SUMMARY ====="
+        echo "Date: $(date)"
+        echo "Input file: $INPUT_FILE"
+        echo ""
+        echo "STATISTICS:"
+        echo "  Total processes started: $TOTAL_PROCESSES"
+        echo "  Completed processes: $COMPLETED_PROCESSES"
+        echo "  Successful: $SUCCESSFUL_PROCESSES"
+        echo "  Failed: $FAILED_PROCESSES"
+        
+        local success_rate=0
+        if [[ $TOTAL_PROCESSES -gt 0 ]]; then
+            success_rate=$((SUCCESSFUL_PROCESSES * 100 / TOTAL_PROCESSES))
+        fi
+        
+        echo "  Success rate: ${success_rate}%"
+        echo "  Total execution time: ${minutes}m ${seconds}s"
+        
+        if [[ $ENABLE_METRICS == true && $COMPLETED_PROCESSES -gt 0 ]]; then
+            local avg_time=$((total_time / COMPLETED_PROCESSES))
+            echo "  Average time per analysis: ${avg_time}s"
+        fi
+        
+        echo ""
+        echo "CONFIGURATION:"
+        echo "  Max concurrent jobs: $MAX_CONCURRENT_JOBS"
+        echo "  Process timeout: ${PROCESS_TIMEOUT}s"
+        echo "  Compression enabled: $ENABLE_COMPRESSION"
+        echo "  Metrics enabled: $ENABLE_METRICS"
+        echo ""
+        echo "OUTPUTS:"
+        echo "  Log files: $LOG_DIR/"
+        echo "  Output files: ./output/"
+        echo ""
+        
+        echo "PROCESS DETAILS:"
+        for pid in "${!PROCESS_STATUS[@]}"; do
+            echo "  PID $pid: ${PROCESS_CONFIG[$pid]} - ${PROCESS_STATUS[$pid]}"
+        done
+        
+        if [[ $FAILED_PROCESSES -gt 0 ]]; then
+            echo ""
+            echo "FAILED ANALYSES:"
+            for pid in "${!PROCESS_STATUS[@]}"; do
+                if [[ "${PROCESS_STATUS[$pid]}" == "failed" || "${PROCESS_STATUS[$pid]}" == "timeout" ]]; then
+                    echo "  - ${PROCESS_CONFIG[$pid]} (PID: $pid) - ${PROCESS_STATUS[$pid]}"
+                fi
+            done
+        fi
+        
+        echo ""
+        echo "===== END OF SUMMARY ====="
+    } | tee "$summary_file"
+    
+    log_info "Summary report saved to: $summary_file"
+    
+    # Compress logs if enabled
+    if [[ $ENABLE_COMPRESSION == true ]]; then
+        compress_logs
+    fi
+}
+
+# Compress log files
+compress_logs() {
+    log_info "Compressing log files..."
+    local compressed_count=0
+    
+    for log_file in "$LOG_DIR"/*.log; do
+        if [[ -f "$log_file" ]]; then
+            gzip -9 "$log_file"
+            ((compressed_count++))
+        fi
+    done
+    
+    log_success "Compressed $compressed_count log files"
+}
+
+# Parse command line arguments
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -j|--jobs)
+                MAX_CONCURRENT_JOBS="$2"
+                shift 2
+                ;;
+            -t|--timeout)
+                PROCESS_TIMEOUT="$2"
+                shift 2
+                ;;
+            -c|--compress)
+                ENABLE_COMPRESSION=true
+                shift
+                ;;
+            -m|--metrics)
+                ENABLE_METRICS=true
+                shift
+                ;;
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+            *)
+                INPUT_FILE="$1"
+                shift
+                ;;
+        esac
     done
 }
 
@@ -199,28 +401,25 @@ wait_for_job_slot() {
 main() {
     log_info "Starting $SCRIPT_NAME"
     
-    # Check arguments
-    if [[ $# -ne 1 ]]; then
-        log_error "Invalid number of arguments"
+    # Parse arguments
+    parse_arguments "$@"
+    
+    # Check that input file was provided
+    if [[ -z "$INPUT_FILE" ]]; then
+        log_error "No input file provided"
         show_usage
         exit 1
     fi
     
-    INPUT_FILE="$1"
-    
-    # Check if input file exists and is readable
+    # Check if input file exists
     if [[ ! -f "$INPUT_FILE" ]]; then
         log_error "Input file not found: $INPUT_FILE"
         exit 1
     fi
     
-    if [[ ! -r "$INPUT_FILE" ]]; then
-        log_error "Input file not readable: $INPUT_FILE"
-        exit 1
-    fi
-    
     # Setup
     setup_directories
+    check_docker_image
     
     # Parse input file
     log_info "Parsing input file: $INPUT_FILE"
@@ -229,10 +428,7 @@ main() {
     local valid_lines=0
     local configurations=()
     
-    # Read file directly using mapfile to avoid issues
-    mapfile -t lines < "$INPUT_FILE"
-    
-    for line in "${lines[@]}"; do
+    while IFS= read -r line; do
         ((line_num++))
         
         # Skip empty lines and comments
@@ -240,27 +436,24 @@ main() {
             continue
         fi
         
-        if result=$(parse_line "$line"); then
+        if result=$(parse_line "$line" "$line_num"); then
             ((valid_lines++))
             configurations+=("$result")
-            log_info "Line $line_num: parsed successfully"
+            log_info "Line $line_num: valid configuration"
         else
-            log_warn "Line $line_num: skipped due to parsing error"
+            log_warn "Line $line_num: skipped due to error"
         fi
-    done
+    done < "$INPUT_FILE"
     
     if [[ $valid_lines -eq 0 ]]; then
-        log_error "No valid lines found in input file"
+        log_error "No valid configurations found"
         exit 1
     fi
     
-    log_success "Parsed $valid_lines valid configuration(s) from $line_num total lines"
-    
-    # Check Docker image availability
-    check_docker_image
+    log_success "Found $valid_lines valid configuration(s)"
     
     # Execute analyses in parallel
-    log_info "Starting parallel execution of analyses (max concurrent: $MAX_CONCURRENT_JOBS)"
+    log_info "Starting parallel execution (max concurrent: $MAX_CONCURRENT_JOBS)"
     
     local count=0
     for config in "${configurations[@]}"; do
@@ -273,51 +466,47 @@ main() {
         
         # Execute analysis in background
         execute_analysis_background "$width" "$tuple" "$url" "$log_filename"
-        
-        log_success "Queued analysis $count/$valid_lines: $tuple"
     done
     
-    log_info "All analyses queued. Background processes: ${#BACKGROUND_PIDS[@]}"
-    log_info "Check log files in $LOG_DIR/ for progress"
-    log_info "Milestone 2 completed: Docker command execution and background processing implemented"
+    # Wait for all processes to complete
+    wait_for_all_processes
+    
+    # Generate summary report
+    generate_summary_report
+    
+    log_success "Batch analysis complete!"
 }
 
 # Handle script interruption
 cleanup() {
     log_warn "Script interrupted, cleaning up..."
     
-    # Kill all background processes
     if [[ ${#BACKGROUND_PIDS[@]} -gt 0 ]]; then
         log_info "Terminating ${#BACKGROUND_PIDS[@]} background process(es)..."
         
         for pid in "${BACKGROUND_PIDS[@]}"; do
             if kill -0 "$pid" 2>/dev/null; then
-                log_info "Killing process $pid..."
                 kill -TERM "$pid" 2>/dev/null || true
             fi
         done
         
-        # Give processes a moment to terminate gracefully
         sleep 2
         
-        # Force kill any remaining processes
         for pid in "${BACKGROUND_PIDS[@]}"; do
             if kill -0 "$pid" 2>/dev/null; then
-                log_warn "Force killing process $pid..."
                 kill -KILL "$pid" 2>/dev/null || true
             fi
         done
-        
-        log_info "Cleanup complete"
     fi
     
+    generate_summary_report
     exit 130
 }
 
 # Set up signal handlers
 trap cleanup INT TERM
 
-# Execute main function if script is run directly
+# Execute main function
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi
