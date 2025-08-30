@@ -5,13 +5,14 @@
 # Usage: ./batch-analyze-working.sh <input_file>
 
 # Configuration
-LOG_DIR="./logs"
+OUTPUT_DIR="./output"
+LOG_DIR="$OUTPUT_DIR/logs"
 SCRIPT_NAME="$(basename "$0")"
 INPUT_FILE=""
 MAX_CONCURRENT_JOBS=10
 BACKGROUND_PIDS=()
 DOCKER_IMAGE="form-shot-runtime"
-PROCESS_TIMEOUT=600  # 10 minutes per process
+PROCESS_TIMEOUT=3600  # 60 minutes per process
 
 # Performance tuning
 ENABLE_COMPRESSION=false  # Compress logs after completion
@@ -144,14 +145,14 @@ parse_line() {
 
 # Create necessary directories
 setup_directories() {
+    if [[ ! -d "$OUTPUT_DIR" ]]; then
+        log_info "Creating output directory: $OUTPUT_DIR"
+        mkdir -p "$OUTPUT_DIR"
+    fi
+
     if [[ ! -d "$LOG_DIR" ]]; then
         log_info "Creating log directory: $LOG_DIR"
         mkdir -p "$LOG_DIR"
-    fi
-    
-    if [[ ! -d "./output" ]]; then
-        log_info "Creating output directory: ./output"
-        mkdir -p "./output"
     fi
 }
 
@@ -184,7 +185,7 @@ execute_analysis_background() {
         echo ""
         
         # Execute the Docker command with timeout
-        timeout $PROCESS_TIMEOUT docker run --rm -v ./output:/app/output "$DOCKER_IMAGE" analyze "$url" "$tuple" --screen-width "$width" 2>&1
+        timeout $PROCESS_TIMEOUT docker run --rm -v $OUTPUT_DIR:/app/output "$DOCKER_IMAGE" analyze "$url" "$tuple" --screen-width "$width" 2>&1
         local exit_code=$?
         
         echo ""
@@ -315,7 +316,7 @@ generate_summary_report() {
         echo ""
         echo "OUTPUTS:"
         echo "  Log files: $LOG_DIR/"
-        echo "  Output files: ./output/"
+        echo "  Output files: $OUTPUT_DIR/"
         echo ""
         
         echo "PROCESS DETAILS:"
