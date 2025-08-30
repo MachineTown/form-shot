@@ -18,3 +18,4 @@ emulator-data/
 
 # Firebase Functions build artifacts
 packages/functions/lib/
+logs/
