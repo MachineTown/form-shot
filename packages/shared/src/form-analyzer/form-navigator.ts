@@ -63,6 +63,12 @@ export class FormNavigator {
     });
   }
   
+  private generateFieldKey(field: SurveyField, index: number): string {
+    // Generate a consistent key for field tracking
+    // Use question number if available, otherwise use position-based key
+    return field.questionNumber || `no_number_${index}`;
+  }
+
   async fillRequiredFields(page: Page, fields: SurveyField[]): Promise<SurveyField[]> {
     // This will return all fields including newly discovered conditional ones
     const allFields: SurveyField[] = [...fields];
@@ -83,7 +89,7 @@ export class FormNavigator {
     for (let i = 0; i < allFields.length; i++) {
       const field = allFields[i];
       // Skip if already filled (including conditional fields filled immediately)
-      const fieldKey = field.questionNumber || `no_number_${i}`;
+      const fieldKey = this.generateFieldKey(field, i);
       logger.info(`Checking field ${i}: key="${fieldKey}", type="${field.inputType}", required=${field.isRequired}`);
       if (filledQuestions.has(fieldKey)) {
         logger.info(`  Field ${fieldKey} already filled, skipping`);
@@ -127,51 +133,61 @@ export class FormNavigator {
           // Fill conditional fields immediately
           logger.info(`Processing ${conditionalFields.length} conditional fields for immediate filling`);
           for (const conditionalField of conditionalFields) {
-            logger.info(`Conditional field ${conditionalField.questionNumber}: required=${conditionalField.isRequired}, type=${conditionalField.inputType}, selector=${conditionalField.selector}`);
+            const fieldIdentifier = conditionalField.questionNumber || `unnamed_field_${conditionalField.questionText?.substring(0, 30)}`;
+            logger.info(`Conditional field detected: identifier="${fieldIdentifier}", required=${conditionalField.isRequired}, type=${conditionalField.inputType}, selector=${conditionalField.selector}, cardBoxSelector=${conditionalField.cardBoxSelector}`);
+            
             // Always fill conditional fields, regardless of required status
             // Since they appeared due to user action, they likely need values
-            if (true) {  // Was: if (conditionalField.isRequired || conditionalField.inputType === 'VAS') {
-              try {
-                logger.info(`Immediately filling conditional field ${conditionalField.questionNumber} (${conditionalField.inputType}) with selector: ${conditionalField.selector}`);
-                const conditionalValue = await this.fillFieldAndGetValue(page, conditionalField);
-                filledQuestions.add(conditionalField.questionNumber);
-                
-                // Add to allFields array for record keeping
-                allFields.push(conditionalField);
-                
-                // Wait after filling each conditional field
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                // Check if this conditional field triggered more conditional fields
-                const questionsAfterConditional = await this.getVisibleQuestions(page);
-                const nestedNewQuestions = questionsAfterConditional.filter(q => 
-                  !questionsAfter.includes(q) && !newQuestions.includes(q)
+            try {
+              logger.info(`Immediately filling conditional field ${fieldIdentifier} (${conditionalField.inputType}) with selector: ${conditionalField.selector}`);
+              const conditionalValue = await this.fillFieldAndGetValue(page, conditionalField);
+              
+              // Add to allFields array for record keeping (BEFORE generating key)
+              allFields.push(conditionalField);
+              
+              // Use consistent key format - use the index where we just added it
+              const conditionalFieldKey = this.generateFieldKey(conditionalField, allFields.length - 1);
+              filledQuestions.add(conditionalFieldKey);
+              logger.info(`Added conditional field to filled set with key: ${conditionalFieldKey}`);
+              
+              // Wait after filling each conditional field
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Check if this conditional field triggered more conditional fields
+              const questionsAfterConditional = await this.getVisibleQuestions(page);
+              const nestedNewQuestions = questionsAfterConditional.filter(q => 
+                !questionsAfter.includes(q) && !newQuestions.includes(q)
+              );
+              
+              if (nestedNewQuestions.length > 0) {
+                logger.info(`Nested conditional questions appeared after filling ${fieldIdentifier}: ${nestedNewQuestions.join(', ')}`);
+                // Recursively handle nested conditional fields
+                const nestedConditionalFields = await this.scanConditionalFields(
+                  page, 
+                  nestedNewQuestions, 
+                  fieldIdentifier, 
+                  conditionalValue
                 );
                 
-                if (nestedNewQuestions.length > 0) {
-                  logger.info(`Nested conditional questions appeared after filling ${conditionalField.questionNumber}: ${nestedNewQuestions.join(', ')}`);
-                  // Recursively handle nested conditional fields
-                  const nestedConditionalFields = await this.scanConditionalFields(
-                    page, 
-                    nestedNewQuestions, 
-                    conditionalField.questionNumber, 
-                    conditionalValue
-                  );
+                for (const nestedField of nestedConditionalFields) {
+                  const nestedFieldId = nestedField.questionNumber || `unnamed_nested_${nestedField.questionText?.substring(0, 30)}`;
+                  logger.info(`Immediately filling nested conditional field ${nestedFieldId}`);
+                  await this.fillFieldAndGetValue(page, nestedField);
                   
-                  for (const nestedField of nestedConditionalFields) {
-                    if (nestedField.isRequired || nestedField.inputType === 'VAS') {
-                      logger.info(`Immediately filling nested conditional field ${nestedField.questionNumber}`);
-                      await this.fillFieldAndGetValue(page, nestedField);
-                      filledQuestions.add(nestedField.questionNumber);
-                      allFields.push(nestedField);
-                      await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
-                  }
+                  // Add to allFields array before generating key
+                  allFields.push(nestedField);
+                  
+                  // Use consistent key format
+                  const nestedFieldKey = this.generateFieldKey(nestedField, allFields.length - 1);
+                  filledQuestions.add(nestedFieldKey);
+                  logger.info(`Added nested conditional field to filled set with key: ${nestedFieldKey}`);
+                  
+                  await new Promise(resolve => setTimeout(resolve, 1000));
                 }
-              } catch (error) {
-                logger.error(`Failed to fill conditional field ${conditionalField.questionNumber}:`, error);
-                // Continue with other fields instead of throwing
               }
+            } catch (error) {
+              logger.error(`Failed to fill conditional field ${fieldIdentifier}:`, error);
+              // Continue with other fields instead of throwing
             }
           }
           
@@ -200,8 +216,189 @@ export class FormNavigator {
       }
     }
     
-    logger.info(`Completed filling ${filledQuestions.size} fields (including ${allFields.length - fields.length} conditional fields)`);
+    // Final scan for any missing required fields that might have appeared late
+    logger.info('Performing final scan for any missing required fields...');
+    const finalMissingFields = await this.scanForMissingRequiredFields(page, filledQuestions, allFields);
+    
+    if (finalMissingFields.length > 0) {
+      logger.warn(`Found ${finalMissingFields.length} missing required fields after initial filling: ${finalMissingFields.map(f => f.questionNumber || 'unnamed').join(', ')}`);
+      
+      for (const missingField of finalMissingFields) {
+        try {
+          const fieldIdentifier = missingField.questionNumber || `late_field_${missingField.questionText?.substring(0, 30)}`;
+          logger.info(`Filling late-appearing field ${fieldIdentifier} (${missingField.inputType})`);
+          
+          await this.fillFieldAndGetValue(page, missingField);
+          
+          // Add to allFields array before generating key
+          allFields.push(missingField);
+          
+          // Use consistent key format
+          const fieldKey = this.generateFieldKey(missingField, allFields.length - 1);
+          filledQuestions.add(fieldKey);
+          logger.info(`Added late-appearing field to filled set with key: ${fieldKey}`);
+          
+          // Wait for any cascade effects
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          logger.error(`Failed to fill late-appearing field ${missingField.questionNumber || 'unnamed'}:`, error);
+        }
+      }
+    }
+    
+    logger.info(`Completed filling ${filledQuestions.size} fields (including ${allFields.length - fields.length} conditional/late fields)`);
     return allFields;
+  }
+  
+  private async scanForMissingRequiredFields(page: Page, filledQuestions: Set<string>, allFields: SurveyField[]): Promise<SurveyField[]> {
+    try {
+      const missingFields = await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return [];
+        
+        const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
+        const fields: any[] = [];
+        
+        cardBoxes.forEach((cardBox, index) => {
+          // Check if visible
+          const style = window.getComputedStyle(cardBox);
+          const element = cardBox as HTMLElement;
+          if (style.display === 'none' || 
+              style.visibility === 'hidden' || 
+              style.opacity === '0' ||
+              element.offsetHeight === 0 || 
+              element.offsetWidth === 0) {
+            return;
+          }
+          
+          // Look for question text and check if required
+          const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
+          let questionNumber = '';
+          let questionText = '';
+          let isRequired = false;
+          
+          for (const elem of textElements) {
+            const text = elem.textContent?.trim() || '';
+            const match = text.match(/^(\d+\.?\d*\.?)\s*(.*)/);
+            if (match) {
+              questionNumber = match[1];
+              questionText = match[2];
+              isRequired = text.endsWith('*');
+              break;
+            } else if (!questionNumber && text && text.length > 2) {
+              // For unnumbered questions
+              questionText = text;
+              isRequired = text.endsWith('*');
+              if (isRequired) break;
+            }
+          }
+          
+          // Check if this field has inputs and if they have values
+          const inputs = cardBox.querySelectorAll('input, select, textarea');
+          let hasValue = false;
+          let inputType = 'unknown';
+          let selector = '';
+          
+          for (const input of inputs) {
+            if (input.tagName === 'SELECT') {
+              const selectEl = input as HTMLSelectElement;
+              hasValue = selectEl.selectedIndex > 0 || selectEl.value !== '';
+              inputType = 'dropdown';
+              selector = input.id ? `#${input.id}` : '';
+            } else if (input.tagName === 'TEXTAREA') {
+              hasValue = (input as HTMLTextAreaElement).value.trim().length > 0;
+              inputType = 'textarea';
+              selector = input.id ? `#${input.id}` : '';
+            } else if ((input as HTMLInputElement).type === 'radio') {
+              const radioGroup = cardBox.querySelectorAll(`input[type="radio"][name="${(input as HTMLInputElement).name}"]`);
+              hasValue = Array.from(radioGroup).some(r => (r as HTMLInputElement).checked);
+              inputType = 'radio';
+              if (!hasValue && input.id) {
+                selector = `#${input.id}`;
+              }
+            } else if ((input as HTMLInputElement).type === 'checkbox') {
+              hasValue = (input as HTMLInputElement).checked;
+              inputType = 'checkbox';
+              selector = input.id ? `#${input.id}` : '';
+            } else {
+              hasValue = (input as HTMLInputElement).value.trim().length > 0;
+              inputType = (input as HTMLInputElement).type || 'text';
+              selector = input.id ? `#${input.id}` : '';
+            }
+            
+            if (selector) break;
+          }
+          
+          // Check for VAS slider
+          if (cardBox.querySelector('[class*="SliderTrack"]')) {
+            inputType = 'VAS';
+            hasValue = false; // VAS always needs interaction
+            selector = '[class*="SliderTrack"]';
+          }
+          
+          // If this is a required field without a value, add it to missing fields
+          if ((isRequired || inputType === 'VAS') && !hasValue && selector) {
+            fields.push({
+              questionNumber: questionNumber || `no_number_${index}`,
+              questionText: questionText.replace(/\*\s*$/, '').trim(),
+              inputType,
+              isRequired: true,
+              selector,
+              cardBoxSelector: cardBox.id ? `#${cardBox.id}` : `[class*="CardBox"]:nth-of-type(${index + 1})`
+            });
+          }
+        });
+        
+        return fields;
+      });
+      
+      // Import test generator for creating test data
+      const { TestDataGenerator } = await import('../test-generator/test-data-generator.js');
+      const testGenerator = new TestDataGenerator();
+      
+      // Filter out already filled fields and create SurveyField objects
+      const newMissingFields: SurveyField[] = [];
+      for (let i = 0; i < missingFields.length; i++) {
+        const field = missingFields[i];
+        // Check all possible key formats that might have been used
+        const possibleKeys = [
+          field.questionNumber,
+          `no_number_${i}`,
+          // Check against all existing allFields indexes
+          ...Array.from({ length: allFields.length }, (_, idx) => `no_number_${idx}`)
+        ].filter(k => k);
+        
+        const isAlreadyFilled = possibleKeys.some(key => filledQuestions.has(key));
+        if (!isAlreadyFilled) {
+          // Generate test data for the field
+          const testData = await testGenerator.generateTestData({
+            ...field,
+            inputType: field.inputType as any,
+            screenshotPath: '',
+            choices: []
+          });
+          
+          newMissingFields.push({
+            ...field,
+            inputType: field.inputType as any,
+            choices: [],
+            screenshotPath: '',
+            testData,
+            conditionalInfo: {
+              isConditional: true,
+              parentQuestion: 'unknown',
+              parentValue: 'unknown',
+              appearedAfter: new Date().toISOString()
+            }
+          });
+        }
+      }
+      
+      return newMissingFields;
+    } catch (error) {
+      logger.error('Error scanning for missing required fields:', error);
+      return [];
+    }
   }
   
   private async getVisibleQuestions(page: Page): Promise<string[]> {
@@ -280,7 +477,7 @@ export class FormNavigator {
           const container = document.querySelector('#survey-body-container');
           if (!container) return null;
           
-          // Find the CardBox with this question number
+          // Find the CardBox with this question number or position
           const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
           for (const cardBox of cardBoxes) {
             const textElements = cardBox.querySelectorAll('h4, h5, h6, span, p, div');
@@ -288,14 +485,34 @@ export class FormNavigator {
             let questionText = '';
             let isRequired = false;
             
-            for (const elem of textElements) {
-              const text = elem.textContent?.trim() || '';
-              const match = text.match(/^(\d+\.?\d*\.?)\s*(.*)/);
-              if (match && match[1] === qNum) {
+            // Handle both numbered and unnumbered questions
+            if (qNum.startsWith('no_number_')) {
+              // This is an unnumbered question, find by position
+              const allCardBoxes = Array.from(container.querySelectorAll('[class*="CardBox"]'));
+              const position = parseInt(qNum.replace('no_number_', ''));
+              if (allCardBoxes[position] === cardBox) {
                 foundQuestion = true;
-                questionText = text;
-                isRequired = text.endsWith('*');
-                break;
+                // Get the question text from the first text element
+                for (const elem of textElements) {
+                  const text = elem.textContent?.trim() || '';
+                  if (text && !text.match(/^(\d+\.?\d*\.?)/)) {
+                    questionText = text;
+                    isRequired = text.endsWith('*');
+                    break;
+                  }
+                }
+              }
+            } else {
+              // Normal numbered question
+              for (const elem of textElements) {
+                const text = elem.textContent?.trim() || '';
+                const match = text.match(/^(\d+\.?\d*\.?)\s*(.*)/);
+                if (match && match[1] === qNum) {
+                  foundQuestion = true;
+                  questionText = text;
+                  isRequired = text.endsWith('*');
+                  break;
+                }
               }
             }
             
@@ -349,7 +566,29 @@ export class FormNavigator {
                 if (label) choices.push(label);
               });
             } else {
-              inputType = (firstInput as HTMLInputElement).type || 'text';
+              // Check inputmode attribute for more specific type hints
+              const inputMode = firstInput.getAttribute('inputmode')?.toLowerCase() || '';
+              const pattern = firstInput.getAttribute('pattern') || '';
+              
+              if (inputMode === 'numeric') {
+                inputType = 'text_numeric';
+                console.log(`Conditional field has inputmode="numeric", treating as numeric text field`);
+              } else if (inputMode === 'decimal') {
+                inputType = 'text_decimal';
+                console.log(`Conditional field has inputmode="decimal", treating as decimal text field`);
+              } else if (inputMode === 'tel') {
+                inputType = 'phone';
+                console.log(`Conditional field has inputmode="tel", treating as phone field`);
+              } else if (inputMode === 'email') {
+                inputType = 'email';
+                console.log(`Conditional field has inputmode="email", treating as email field`);
+              } else if (pattern && (pattern.includes('[0-9]') || pattern.includes('\\d'))) {
+                inputType = 'text_numeric';
+                console.log(`Conditional field has numeric pattern="${pattern}", treating as numeric text field`);
+              } else {
+                inputType = (firstInput as HTMLInputElement).type || 'text';
+              }
+              
               const inputId = firstInput.id;
               if (inputId && /^\d/.test(inputId)) {
                 selector = `#\\3${inputId.charAt(0)} ${inputId.substring(1)}`;
@@ -477,6 +716,8 @@ export class FormNavigator {
       case 'email':
       case 'phone':
       case 'number':
+      case 'text_numeric':
+      case 'text_decimal':
         await page.type(field.selector, String(testValue));
         break;
         
@@ -1424,12 +1665,16 @@ export class FormNavigator {
         if (!container) return [];
         
         const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
-        const missingRequired: Array<{questionNumber: string, selector: string, inputType: string}> = [];
+        const missingRequired: Array<{questionNumber: string, selector: string, inputType: string, questionText: string}> = [];
         
-        cardBoxes.forEach((cardBox) => {
+        cardBoxes.forEach((cardBox, index) => {
           // Skip if hidden
           const style = window.getComputedStyle(cardBox);
-          if (style.display === 'none' || style.visibility === 'hidden') {
+          const element = cardBox as HTMLElement;
+          if (style.display === 'none' || 
+              style.visibility === 'hidden' ||
+              element.offsetHeight === 0 ||
+              element.offsetWidth === 0) {
             return;
           }
           
@@ -1448,6 +1693,14 @@ export class FormNavigator {
               // Check if the question text ends with *
               isRequired = text.endsWith('*');
               break;
+            } else if (!questionNumber && text && text.length > 2) {
+              // For unnumbered questions, check if they're required
+              questionText = text;
+              isRequired = text.endsWith('*');
+              if (isRequired) {
+                questionNumber = `no_number_${index}`;
+                break;
+              }
             }
           }
           
@@ -1490,7 +1743,8 @@ export class FormNavigator {
               missingRequired.push({
                 questionNumber,
                 selector,
-                inputType
+                inputType,
+                questionText: questionText.replace(/\*\s*$/, '').trim()
               });
             }
           }
@@ -1500,16 +1754,20 @@ export class FormNavigator {
       });
       
       if (missingFields.length > 0) {
-        logger.info(`Found ${missingFields.length} missing required fields: ${missingFields.map(f => f.questionNumber).join(', ')}`);
+        logger.info(`Found ${missingFields.length} missing required fields: ${missingFields.map(f => `${f.questionNumber} ("${f.questionText?.substring(0, 30)}...")`).join(', ')}`);
         
         // Fill each missing field
         for (const missingField of missingFields) {
           try {
-            logger.info(`Filling missing field ${missingField.questionNumber} (${missingField.inputType})`);
+            const fieldIdentifier = missingField.questionNumber.startsWith('no_number_') ? 
+              `unnamed field: "${missingField.questionText?.substring(0, 40)}..."` : 
+              missingField.questionNumber;
+            logger.info(`Filling missing field ${fieldIdentifier} (${missingField.inputType})`);
             
             // Create a minimal SurveyField object for filling
             const field: Partial<SurveyField> = {
               questionNumber: missingField.questionNumber,
+              questionText: missingField.questionText,
               selector: missingField.selector,
               inputType: missingField.inputType as any,
               testData: {

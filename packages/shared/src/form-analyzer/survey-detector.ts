@@ -278,6 +278,34 @@ export class SurveyFormDetector {
         if (input.tagName === 'INPUT') {
           const inputEl = input as HTMLInputElement;
           
+          // Check inputmode attribute first for specific input hints
+          const inputMode = inputEl.getAttribute('inputmode')?.toLowerCase() || '';
+          const pattern = inputEl.getAttribute('pattern') || '';
+          
+          // Check for numeric fields based on inputmode or pattern
+          if (inputMode === 'numeric' || inputMode === 'decimal') {
+            console.log(`Field has inputmode="${inputMode}", treating as numeric text field`);
+            return inputMode === 'decimal' ? 'text_decimal' : 'text_numeric';
+          }
+          
+          // Check pattern attribute for numeric patterns
+          if (pattern && (pattern.includes('[0-9]') || pattern.includes('\\d'))) {
+            console.log(`Field has numeric pattern="${pattern}", treating as numeric text field`);
+            return 'text_numeric';
+          }
+          
+          // Check for tel inputmode
+          if (inputMode === 'tel') {
+            console.log(`Field has inputmode="tel", treating as phone field`);
+            return 'phone';
+          }
+          
+          // Check for email inputmode
+          if (inputMode === 'email') {
+            console.log(`Field has inputmode="email", treating as email field`);
+            return 'email';
+          }
+          
           // Check for date field indicators
           // Check for date patterns in various attributes
           const placeholder = inputEl.placeholder?.toLowerCase() || '';

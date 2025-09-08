@@ -44,8 +44,8 @@ async function authenticateUser(request: any): Promise<{ uid: string; email: str
 
 export const downloadStudyZip = onRequest({
   cors: true,
-  timeoutSeconds: 60, // 1 minute
-  memory: "2GiB"
+  timeoutSeconds: 540, // 9 minutes (maximum for Cloud Functions)
+  memory: "4GiB"
 }, async (request, response) => {
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(7);
@@ -164,8 +164,8 @@ export const downloadStudyZip = onRequest({
 
 export const downloadPackageZip = onRequest({
   cors: true,
-  timeoutSeconds: 30, // 30 seconds
-  memory: "1GiB"
+  timeoutSeconds: 540, // 9 minutes (maximum for Cloud Functions)
+  memory: "4GiB"
 }, async (request, response) => {
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(7);

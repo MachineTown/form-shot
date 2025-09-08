@@ -99,6 +99,31 @@ export class FieldTypeRegistry {
         }
       },
       {
+        id: 'numeric_field_detection_v1',
+        name: 'Numeric Field Detection',
+        priority: 82,
+        patterns: {
+          questionText: [
+            /\b(count|number|quantity|amount|total)\b/i,
+            /\b(how\s+many|how\s+much)\b/i,
+            /\b(inhaler|dose|dosage|pills?|tablets?)\b/i,
+            /\b(times?\s+per|frequency|occurrences?)\b/i,
+            /\b(score|points?|units?)\b/i
+          ],
+          inputAttributes: {
+            type: /^(number|text_numeric|text)$/i
+          }
+        },
+        testDataTemplate: 'numeric_validation_v1',
+        confidence: 88,
+        version: '1.0.0',
+        createdAt: new Date().toISOString(),
+        usage: {
+          totalMatches: 0,
+          successRate: 1.0
+        }
+      },
+      {
         id: 'date_detection_v1',
         name: 'Date Field Detection',
         priority: 88,

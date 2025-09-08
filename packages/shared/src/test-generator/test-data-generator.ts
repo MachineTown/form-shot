@@ -217,6 +217,125 @@ export class TestDataGenerator {
         }
       },
       {
+        id: 'numeric_validation_v1',
+        fieldType: 'numeric',
+        version: '1.0.0',
+        description: 'Numeric field validation test cases',
+        testCases: [
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '5',
+            description: 'Small positive integer',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '10',
+            description: 'Round number',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '25',
+            description: 'Mid-range number',
+            weight: 9
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '0',
+            description: 'Zero value',
+            weight: 8
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '1',
+            description: 'Minimum positive',
+            weight: 8
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '100',
+            description: 'Large round number',
+            weight: 7
+          },
+          {
+            type: 'edge',
+            valueType: 'static',
+            value: '999',
+            description: 'Large number',
+            weight: 6
+          }
+        ],
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          author: 'system',
+          tags: ['numeric', 'count', 'quantity', 'number']
+        }
+      },
+      {
+        id: 'decimal_validation_v1',
+        fieldType: 'decimal',
+        version: '1.0.0',
+        description: 'Decimal number field validation test cases',
+        testCases: [
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '1.5',
+            description: 'Simple decimal',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '10.25',
+            description: 'Two decimal places',
+            weight: 10
+          },
+          {
+            type: 'valid',
+            valueType: 'static',
+            value: '99.9',
+            description: 'One decimal place',
+            weight: 9
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '0.1',
+            description: 'Small decimal',
+            weight: 8
+          },
+          {
+            type: 'boundary',
+            valueType: 'static',
+            value: '0.5',
+            description: 'Half value',
+            weight: 8
+          },
+          {
+            type: 'edge',
+            valueType: 'static',
+            value: '999.99',
+            description: 'Large decimal',
+            weight: 6
+          }
+        ],
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          author: 'system',
+          tags: ['decimal', 'float', 'number', 'measurement']
+        }
+      },
+      {
         id: 'date_validation_v1',
         fieldType: 'date',
         version: '1.0.0',
@@ -633,6 +752,26 @@ export class TestDataGenerator {
     // Handle NRS (Numeric Rating Scale) specifically
     if (field.inputType === 'NRS') {
       return this.generateNRSTestCases(field, detection);
+    }
+    
+    // Handle numeric text fields specifically
+    if (field.inputType === 'text_numeric') {
+      const numericTemplate = this.templates.get('numeric_validation_v1');
+      if (numericTemplate) {
+        return numericTemplate.testCases.map((templateCase, index) => 
+          this.createTestCaseFromTemplate(templateCase, field, index)
+        );
+      }
+    }
+    
+    // Handle decimal text fields specifically
+    if (field.inputType === 'text_decimal') {
+      const decimalTemplate = this.templates.get('decimal_validation_v1');
+      if (decimalTemplate) {
+        return decimalTemplate.testCases.map((templateCase, index) => 
+          this.createTestCaseFromTemplate(templateCase, field, index)
+        );
+      }
     }
 
     // Use template-based generation for other field types

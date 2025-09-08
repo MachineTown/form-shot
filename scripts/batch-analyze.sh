@@ -17,6 +17,7 @@ PROCESS_TIMEOUT=3600  # 60 minutes per process
 # Performance tuning
 ENABLE_COMPRESSION=false  # Compress logs after completion
 ENABLE_METRICS=false      # Track performance metrics
+ENABLE_UPLOAD=false       # Upload successful analyses to Firestore
 START_TIME=$(date +%s)    # Track total execution time
 
 # Process tracking
@@ -28,6 +29,8 @@ TOTAL_PROCESSES=0
 COMPLETED_PROCESSES=0
 SUCCESSFUL_PROCESSES=0
 FAILED_PROCESSES=0
+UPLOADED_PROCESSES=0
+UPLOAD_FAILED_PROCESSES=0
 
 # Colors for output
 RED='\033[0;31m'
@@ -68,6 +71,7 @@ Options:
   -t, --timeout SECS    Timeout per process in seconds (default: $PROCESS_TIMEOUT)
   -c, --compress        Compress log files after completion
   -m, --metrics         Enable performance metrics tracking
+  -u, --upload          Upload successful analyses to Firestore (requires ~/firestore.json)
   -h, --help            Show this help message
 
 Input file format (one per line):
@@ -165,6 +169,74 @@ check_docker_image() {
     fi
 }
 
+# Convert tuple to directory path
+tuple_to_path() {
+    local tuple="$1"
+    echo "${tuple//,/\/}"
+}
+
+# Check if analysis.json exists for a given tuple
+check_analysis_exists() {
+    local tuple="$1"
+    local path=$(tuple_to_path "$tuple")
+    local analysis_file="$OUTPUT_DIR/$path/analysis.json"
+    
+    if [[ -f "$analysis_file" ]]; then
+        return 0  # File exists
+    else
+        return 1  # File does not exist
+    fi
+}
+
+# Execute upload command in background for a given analysis file
+execute_upload_background() {
+    local tuple="$1"
+    local path=$(tuple_to_path "$tuple")
+    local analysis_file="/app/output/$path/analysis.json"
+    local log_filename="upload-$(convert_tuple_to_filename "$tuple")"
+    local log_filepath="$LOG_DIR/$log_filename"
+    
+    log_info "Starting upload: $tuple"
+    
+    # Check if firestore.json exists
+    if [[ ! -f ~/firestore.json ]]; then
+        log_error "~/firestore.json not found - cannot upload"
+        return 1
+    fi
+    
+    # Execute upload command in background
+    (
+        echo "=== Starting upload at $(date) ==="
+        echo "Tuple: $tuple"
+        echo "Analysis file: $analysis_file"
+        echo "=================================="
+        echo ""
+        
+        docker run --rm \
+            -v "$OUTPUT_DIR:/app/output" \
+            -v ~/firestore.json:/app/firestore.json \
+            "$DOCKER_IMAGE" \
+            upload "$analysis_file" 2>&1
+        
+        local exit_code=$?
+        
+        echo ""
+        echo "=== Upload completed at $(date) ==="
+        echo "Exit code: $exit_code"
+        
+        exit $exit_code
+    ) > "$log_filepath" 2>&1 &
+    
+    local bg_pid=$!
+    BACKGROUND_PIDS+=("$bg_pid")
+    PROCESS_STATUS["$bg_pid"]="uploading"
+    PROCESS_CONFIG["$bg_pid"]="upload:$tuple"
+    PROCESS_START_TIME["$bg_pid"]=$(date +%s)
+    
+    log_info "Started upload process PID: $bg_pid for $tuple"
+    return 0
+}
+
 # Execute Docker command in background with logging
 execute_analysis_background() {
     local width="$1"
@@ -172,6 +244,14 @@ execute_analysis_background() {
     local url="$3"
     local log_filename="$4"
     local log_filepath="$LOG_DIR/$log_filename"
+    
+    # Check if analysis already exists and upload is enabled
+    if [[ $ENABLE_UPLOAD == true ]] && check_analysis_exists "$tuple"; then
+        log_info "Analysis already exists for $tuple, skipping to upload"
+        wait_for_job_slot  # Wait for available slot before starting upload
+        execute_upload_background "$tuple"
+        return 0
+    fi
     
     log_info "Starting analysis: $tuple"
     
@@ -220,16 +300,44 @@ wait_for_job_slot() {
                 # Process completed
                 wait "$pid"
                 local exit_code=$?
-                ((COMPLETED_PROCESSES++))
                 
-                if [[ $exit_code -eq 0 ]]; then
-                    ((SUCCESSFUL_PROCESSES++))
-                    PROCESS_STATUS["$pid"]="success"
-                    log_success "Process $pid completed successfully (${PROCESS_CONFIG[$pid]})"
+                # Check if this was an upload or analysis process
+                local config="${PROCESS_CONFIG[$pid]}"
+                if [[ "$config" == upload:* ]]; then
+                    # Upload process
+                    if [[ $exit_code -eq 0 ]]; then
+                        ((UPLOADED_PROCESSES++))
+                        PROCESS_STATUS["$pid"]="upload_success"
+                        log_success "Upload process $pid completed successfully (${config#upload:})"
+                    else
+                        ((UPLOAD_FAILED_PROCESSES++))
+                        PROCESS_STATUS["$pid"]="upload_failed"
+                        log_error "Upload process $pid failed with exit code $exit_code (${config#upload:})"
+                    fi
                 else
-                    ((FAILED_PROCESSES++))
-                    PROCESS_STATUS["$pid"]="failed"
-                    log_error "Process $pid failed with exit code $exit_code (${PROCESS_CONFIG[$pid]})"
+                    # Analysis process
+                    ((COMPLETED_PROCESSES++))
+                    
+                    if [[ $exit_code -eq 0 ]]; then
+                        ((SUCCESSFUL_PROCESSES++))
+                        PROCESS_STATUS["$pid"]="success"
+                        log_success "Process $pid completed successfully ($config)"
+                        
+                        # Trigger upload if enabled and analysis succeeded
+                        if [[ $ENABLE_UPLOAD == true ]]; then
+                            local tuple="$config"
+                            if check_analysis_exists "$tuple"; then
+                                log_info "Triggering upload for successful analysis: $tuple"
+                                execute_upload_background "$tuple"
+                            else
+                                log_warn "Analysis succeeded but analysis.json not found for $tuple"
+                            fi
+                        fi
+                    else
+                        ((FAILED_PROCESSES++))
+                        PROCESS_STATUS["$pid"]="failed"
+                        log_error "Process $pid failed with exit code $exit_code ($config)"
+                    fi
                 fi
             fi
         done
@@ -255,20 +363,58 @@ wait_for_all_processes() {
         log_info "Waiting for PID $pid (${PROCESS_CONFIG[$pid]})..."
         wait "$pid" 2>/dev/null
         local exit_code=$?
-        ((COMPLETED_PROCESSES++))
         
-        if [[ $exit_code -eq 0 ]]; then
-            ((SUCCESSFUL_PROCESSES++))
-            PROCESS_STATUS["$pid"]="success"
-            log_success "Process $pid completed successfully (${PROCESS_CONFIG[$pid]})"
-        elif [[ $exit_code -eq 124 ]]; then
-            ((FAILED_PROCESSES++))
-            PROCESS_STATUS["$pid"]="timeout"
-            log_warn "Process $pid timed out after ${PROCESS_TIMEOUT}s (${PROCESS_CONFIG[$pid]})"
+        # Check if this was an upload or analysis process
+        local config="${PROCESS_CONFIG[$pid]}"
+        if [[ "$config" == upload:* ]]; then
+            # Upload process
+            if [[ $exit_code -eq 0 ]]; then
+                ((UPLOADED_PROCESSES++))
+                PROCESS_STATUS["$pid"]="upload_success"
+                log_success "Upload process $pid completed successfully (${config#upload:})"
+            else
+                ((UPLOAD_FAILED_PROCESSES++))
+                PROCESS_STATUS["$pid"]="upload_failed"
+                log_error "Upload process $pid failed with exit code $exit_code (${config#upload:})"
+            fi
         else
-            ((FAILED_PROCESSES++))
-            PROCESS_STATUS["$pid"]="failed"
-            log_error "Process $pid failed with exit code $exit_code (${PROCESS_CONFIG[$pid]})"
+            # Analysis process
+            ((COMPLETED_PROCESSES++))
+            
+            if [[ $exit_code -eq 0 ]]; then
+                ((SUCCESSFUL_PROCESSES++))
+                PROCESS_STATUS["$pid"]="success"
+                log_success "Process $pid completed successfully ($config)"
+                
+                # Trigger upload if enabled and analysis succeeded
+                if [[ $ENABLE_UPLOAD == true ]]; then
+                    local tuple="$config"
+                    if check_analysis_exists "$tuple"; then
+                        log_info "Triggering upload for successful analysis: $tuple"
+                        execute_upload_background "$tuple"
+                        # Wait for the upload to complete since we're in final cleanup
+                        wait $!
+                        local upload_exit=$?
+                        if [[ $upload_exit -eq 0 ]]; then
+                            ((UPLOADED_PROCESSES++))
+                            log_success "Upload completed for $tuple"
+                        else
+                            ((UPLOAD_FAILED_PROCESSES++))
+                            log_error "Upload failed for $tuple"
+                        fi
+                    else
+                        log_warn "Analysis succeeded but analysis.json not found for $tuple"
+                    fi
+                fi
+            elif [[ $exit_code -eq 124 ]]; then
+                ((FAILED_PROCESSES++))
+                PROCESS_STATUS["$pid"]="timeout"
+                log_warn "Process $pid timed out after ${PROCESS_TIMEOUT}s ($config)"
+            else
+                ((FAILED_PROCESSES++))
+                PROCESS_STATUS["$pid"]="failed"
+                log_error "Process $pid failed with exit code $exit_code ($config)"
+            fi
         fi
     done
     
@@ -294,6 +440,11 @@ generate_summary_report() {
         echo "  Successful: $SUCCESSFUL_PROCESSES"
         echo "  Failed: $FAILED_PROCESSES"
         
+        if [[ $ENABLE_UPLOAD == true ]]; then
+            echo "  Uploaded: $UPLOADED_PROCESSES"
+            echo "  Upload failed: $UPLOAD_FAILED_PROCESSES"
+        fi
+        
         local success_rate=0
         if [[ $TOTAL_PROCESSES -gt 0 ]]; then
             success_rate=$((SUCCESSFUL_PROCESSES * 100 / TOTAL_PROCESSES))
@@ -313,6 +464,7 @@ generate_summary_report() {
         echo "  Process timeout: ${PROCESS_TIMEOUT}s"
         echo "  Compression enabled: $ENABLE_COMPRESSION"
         echo "  Metrics enabled: $ENABLE_METRICS"
+        echo "  Upload enabled: $ENABLE_UPLOAD"
         echo ""
         echo "OUTPUTS:"
         echo "  Log files: $LOG_DIR/"
@@ -321,7 +473,13 @@ generate_summary_report() {
         
         echo "PROCESS DETAILS:"
         for pid in "${!PROCESS_STATUS[@]}"; do
-            echo "  PID $pid: ${PROCESS_CONFIG[$pid]} - ${PROCESS_STATUS[$pid]}"
+            local config="${PROCESS_CONFIG[$pid]}"
+            local status="${PROCESS_STATUS[$pid]}"
+            if [[ "$config" == upload:* ]]; then
+                echo "  PID $pid: [UPLOAD] ${config#upload:} - $status"
+            else
+                echo "  PID $pid: [ANALYZE] $config - $status"
+            fi
         done
         
         if [[ $FAILED_PROCESSES -gt 0 ]]; then
@@ -381,6 +539,10 @@ parse_arguments() {
                 ENABLE_METRICS=true
                 shift
                 ;;
+            -u|--upload)
+                ENABLE_UPLOAD=true
+                shift
+                ;;
             -h|--help)
                 show_usage
                 exit 0
@@ -421,6 +583,16 @@ main() {
     # Setup
     setup_directories
     check_docker_image
+    
+    # Check for firestore.json if upload is enabled
+    if [[ $ENABLE_UPLOAD == true ]]; then
+        if [[ ! -f ~/firestore.json ]]; then
+            log_error "Upload enabled but ~/firestore.json not found"
+            log_error "Please ensure ~/firestore.json exists or disable upload with -u flag"
+            exit 1
+        fi
+        log_info "Upload enabled - firestore.json found"
+    fi
     
     # Parse input file
     log_info "Parsing input file: $INPUT_FILE"
