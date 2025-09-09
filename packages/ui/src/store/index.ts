@@ -3,21 +3,23 @@ import { setupListeners } from '@reduxjs/toolkit/query';
 import themeReducer from './slices/themeSlice';
 import navigationReducer from './slices/navigationSlice';
 import { firestoreApi } from './services/firestoreApi';
+import { reportApi } from './services/reportApi';
 
 export const store = configureStore({
   reducer: {
     theme: themeReducer,
     navigation: navigationReducer,
     [firestoreApi.reducerPath]: firestoreApi.reducer,
+    [reportApi.reducerPath]: reportApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         // Ignore Firebase timestamp warnings
-        ignoredActions: ['firestore/executeQuery/fulfilled'],
-        ignoredPaths: ['firestore'],
+        ignoredActions: ['firestore/executeQuery/fulfilled', 'reportApi/executeQuery/fulfilled'],
+        ignoredPaths: ['firestore', 'reportApi'],
       },
-    }).concat(firestoreApi.middleware),
+    }).concat(firestoreApi.middleware, reportApi.middleware),
 });
 
 // Enable refetchOnFocus/refetchOnReconnect behaviors

@@ -6,6 +6,7 @@ import { router } from './router';
 import { lightTheme, darkTheme } from './theme';
 import { useAppSelector } from './hooks/redux';
 import { AuthProvider } from './contexts/AuthContext';
+import './styles/dnd-animations.css';
 
 function ThemedApp() {
   const themeMode = useAppSelector((state) => state.theme.mode);

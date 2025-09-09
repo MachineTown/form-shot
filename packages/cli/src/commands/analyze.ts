@@ -98,7 +98,7 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
             // Try clicking next to see if it triggers validation or reveals fields
             logger.info('Attempting navigation to check for dynamic content...');
             try {
-              await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', 500); // Short delay for test
+              await formNavigator.clickNavigationButtonWithRetry(puppeteerManager.getPage(), 'next', 500); // Use retry logic
               
               // Check if we got a validation modal
               await new Promise(resolve => setTimeout(resolve, 1000));
@@ -201,18 +201,8 @@ export async function analyzeSurvey(url: string, tuple: SurveyTuple, navDelay: n
           
           // Only navigate if this is not the last form
           if (!isLastForm) {
-            logger.info('Clicking next button...');
-            await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
-          
-          // Check for validation modal
-          const hasModal = await formNavigator.detectValidationModal(puppeteerManager.getPage());
-          if (hasModal) {
-            logger.warn('Validation modal detected, closing and retrying...');
-            await formNavigator.closeValidationModal(puppeteerManager.getPage());
-            // Try to fill any missing fields (including conditional fields) and click next again
-            await formNavigator.fillMissingRequiredFields(puppeteerManager.getPage());
-            await formNavigator.clickNavigationButton(puppeteerManager.getPage(), 'next', navDelay);
-          }
+            logger.info('Clicking next button with retry logic...');
+            await formNavigator.clickNavigationButtonWithRetry(puppeteerManager.getPage(), 'next', navDelay);
           
           // Wait for form transition
           const transitioned = await formNavigator.waitForFormTransition(puppeteerManager.getPage(), form.longTitle);

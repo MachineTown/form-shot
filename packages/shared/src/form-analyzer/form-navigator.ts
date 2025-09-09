@@ -4,6 +4,26 @@ import { logger } from '../utils/logger.js';
 
 export class FormNavigator {
   
+  async getFormShortName(page: Page): Promise<string> {
+    try {
+      return await page.evaluate(() => {
+        const container = document.querySelector('#survey-body-container');
+        if (!container) return 'NO_CONTAINER';
+        
+        // Look for h3 element which contains the short name
+        const h3Elements = container.querySelectorAll('h3');
+        if (h3Elements.length > 0) {
+          return h3Elements[0].textContent?.trim() || 'NO_SHORT_NAME';
+        }
+        
+        return 'NO_SHORT_NAME';
+      });
+    } catch (error) {
+      logger.error('Error getting form short name:', error);
+      return 'ERROR';
+    }
+  }
+  
   async detectNavigationButtons(page: Page): Promise<NavigationButton[]> {
     return await page.evaluate(() => {
       // Navigation buttons are after survey-body-container
@@ -1653,6 +1673,63 @@ export class FormNavigator {
         // Don't throw error - let the caller handle this case
       }
     }
+  }
+  
+  async clickNavigationButtonWithRetry(page: Page, type: 'next' | 'previous' | 'finish', initialDelay: number = 1000): Promise<void> {
+    const maxAttempts = 3;
+    const backoffDelays = [1000, 3000, 5000]; // Progressive delays after click
+    
+    // Get current form identifier before navigation
+    const initialShortName = await this.getFormShortName(page);
+    logger.info(`Current form before navigation: "${initialShortName}"`);
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        // Use initial delay only on first attempt, no delay on retries (button click will handle its own delay)
+        const clickDelay = attempt === 0 ? initialDelay : 500; // Short delay on retries
+        
+        // Try to click the navigation button
+        await this.clickNavigationButton(page, type, clickDelay);
+        
+        // Wait for potential navigation/DOM updates
+        await new Promise(resolve => setTimeout(resolve, backoffDelays[attempt]));
+        
+        // Check if form changed by comparing short names
+        const currentShortName = await this.getFormShortName(page);
+        
+        if (currentShortName !== initialShortName) {
+          // Success! Navigation completed
+          logger.info(`Navigation successful on attempt ${attempt + 1}. New form: "${currentShortName}"`);
+          return;
+        }
+        
+        // Check if we're stuck due to validation errors
+        const hasValidationError = await this.detectValidationModal(page);
+        if (hasValidationError) {
+          logger.warn(`Validation error detected on attempt ${attempt + 1}`);
+          // Try to close modal and fill missing fields
+          await this.closeValidationModal(page);
+          await this.fillMissingRequiredFields(page);
+          // Continue to next attempt
+        }
+        
+        logger.warn(`Navigation did not proceed (attempt ${attempt + 1}/${maxAttempts}). Form still shows: "${currentShortName}"`);
+        
+        if (attempt < maxAttempts - 1) {
+          logger.info(`Retrying navigation with ${backoffDelays[attempt + 1] / 1000}s backoff...`);
+        }
+      } catch (error) {
+        logger.error(`Error during navigation attempt ${attempt + 1}:`, error);
+        // Continue to next attempt unless it's the last one
+        if (attempt === maxAttempts - 1) {
+          throw error;
+        }
+      }
+    }
+    
+    // All attempts failed
+    const finalShortName = await this.getFormShortName(page);
+    throw new Error(`Navigation failed after ${maxAttempts} attempts. Form stuck on: "${finalShortName}". This may indicate required fields are not filled or validation errors are blocking navigation.`);
   }
   
   async fillMissingRequiredFields(page: Page): Promise<void> {

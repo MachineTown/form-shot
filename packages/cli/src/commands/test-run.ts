@@ -299,50 +299,17 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
               fullPage: true 
             });
             
-            // Click next button to go to next form
-            logger.info(`Clicking next button: "${nextButton.text}"`);
-            await formNavigator.clickNavigationButton(page, 'next', 3000);
+            // Click next button to go to next form with automatic retry logic
+            logger.info(`Clicking next button: "${nextButton.text}" with retry logic`);
+            await formNavigator.clickNavigationButtonWithRetry(page, 'next', 1000);
             
-            // Wait for form transition
-            logger.info('Waiting for form transition...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            // Check if navigation was successful
-            const afterNavInfo = await page.evaluate(() => {
-              const container = document.querySelector('#survey-body-container');
-              if (!container) return { error: 'No container' };
-              
-              const pElements = container.querySelectorAll('p');
-              const h3Elements = container.querySelectorAll('h3');
-              const cardBoxes = container.querySelectorAll('[class*="CardBox"]');
-              
-              return {
-                longTitle: pElements[0]?.textContent?.trim() || 'Unknown',
-                shortName: h3Elements[0]?.textContent?.trim() || 'Unknown',
-                visibleCardBoxCount: cardBoxes.length,
-                hasContent: container.children.length > 0
-              };
-            });
-            
-            logger.info(`After navigation state:`, JSON.stringify(afterNavInfo, null, 2));
-            
-            // Take screenshot after navigation
+            // Navigation retry logic will handle validation modals and form transition verification
+            // Just take a screenshot of the new state
             const afterNavPath = join(runOutputDir, `after_nav_to_form${formIndex + 2}.png`) as `${string}.png`;
             await page.screenshot({ 
               path: afterNavPath,
               fullPage: true 
             });
-            
-            // Check for validation modal
-            const hasModal = await formNavigator.detectValidationModal(page);
-            if (hasModal) {
-              logger.warn('Validation modal detected, closing and retrying...');
-              await formNavigator.closeValidationModal(page);
-              // Try to fill any missing required fields and navigate again
-              await formNavigator.fillMissingRequiredFields(page);
-              await formNavigator.clickNavigationButton(page, 'next', 3000);
-              await new Promise(resolve => setTimeout(resolve, 3000));
-            }
             
             // Clear any existing values on the new form
             logger.info(`Clearing any existing values on form ${formIndex + 2}...`);
@@ -1294,10 +1261,24 @@ async function checkValidationMessages(page: any, field: any): Promise<{triggere
   }
 }
 
+function padNumber(num: number | string, length: number = 3): string {
+  return String(num).padStart(length, '0');
+}
+
 async function captureFieldScreenshot(page: any, field: any, testCase: any, outputDir: string): Promise<string> {
   const currentViewport = page.viewport();
   const width = currentViewport?.width || 767;
-  const filename = `test_${field.questionNumber.replace(/\./g, '_')}_${testCase.id}_${Date.now()}_${width}.png`;
+  
+  // Extract numeric parts from question number and pad them
+  let questionNumPadded: string;
+  const numbers = field.questionNumber.match(/\d+/g);
+  if (numbers) {
+    questionNumPadded = numbers.map((n: string) => padNumber(parseInt(n))).join('_');
+  } else {
+    questionNumPadded = padNumber(field.questionNumber.replace(/\./g, '_'));
+  }
+  
+  const filename = `test_${questionNumPadded}_${testCase.id}_${Date.now()}_${width}.png`;
   const screenshotPath = join(outputDir, filename);
   
   try {

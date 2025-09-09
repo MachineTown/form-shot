@@ -9,13 +9,88 @@ service cloud.firestore {
              get(/databases/$(database)/documents/allowed-domains/$(domain)).data.enabled == true;
     }
     
+    // Function to check if user owns a resource
+    function isOwner(resource) {
+      return request.auth != null && 
+             resource.data.createdBy == request.auth.token.email;
+    }
+    
+    // Function to check if user has shared access
+    function hasSharedAccess(resource) {
+      return request.auth != null && 
+             request.auth.token.email in resource.data.sharedWith;
+    }
+    
     // Allow anyone to read allowed-domains collection (needed for auth validation)
     match /allowed-domains/{domain} {
       allow read: if true;
       allow write: if false;
     }
     
-    // All other documents require auth and allowed domain
+    // Report Configurations
+    match /report-configurations/{configId} {
+      // Read: Owner, shared users, or public configurations
+      allow read: if request.auth != null && isAllowedDomain() && 
+        (resource == null ||
+         isOwner(resource) ||
+         hasSharedAccess(resource) ||
+         resource.data.isPublic == true);
+      
+      // Create: Authenticated users with allowed domain
+      allow create: if request.auth != null && isAllowedDomain() &&
+        request.resource.data.createdBy == request.auth.token.email;
+      
+      // Update: Only owner can update
+      allow update: if request.auth != null && isAllowedDomain() && 
+        isOwner(resource) &&
+        request.resource.data.createdBy == resource.data.createdBy;
+      
+      // Delete: Only owner can delete
+      allow delete: if request.auth != null && isAllowedDomain() && 
+        isOwner(resource);
+    }
+    
+    // Report Generation Jobs
+    match /report-generation-jobs/{jobId} {
+      // Read: User who requested the job or has access to the configuration
+      allow read: if request.auth != null && isAllowedDomain() && 
+        (resource.data.requestedBy == request.auth.token.email ||
+         (exists(/databases/$(database)/documents/report-configurations/$(resource.data.configurationId)) &&
+          (get(/databases/$(database)/documents/report-configurations/$(resource.data.configurationId)).data.createdBy == request.auth.token.email ||
+           request.auth.token.email in get(/databases/$(database)/documents/report-configurations/$(resource.data.configurationId)).data.sharedWith)));
+      
+      // Create: Authenticated users with allowed domain
+      allow create: if request.auth != null && isAllowedDomain() &&
+        request.resource.data.requestedBy == request.auth.token.email;
+      
+      // Update: Nobody can update directly (only Cloud Functions)
+      allow update: if false;
+      
+      // Delete: No deletion allowed
+      allow delete: if false;
+    }
+    
+    // Report Templates (future enhancement)
+    match /report-templates/{templateId} {
+      // Read: All authenticated users with allowed domain
+      allow read: if request.auth != null && isAllowedDomain();
+      
+      // Create: Authenticated users with allowed domain
+      allow create: if request.auth != null && isAllowedDomain() &&
+        request.resource.data.createdBy == request.auth.token.email;
+      
+      // Update: Only owner or system templates by admins
+      allow update: if request.auth != null && isAllowedDomain() && 
+        (isOwner(resource) || 
+         (resource.data.isSystemTemplate == true && request.auth.token.admin == true));
+      
+      // Delete: Only owner or system templates by admins
+      allow delete: if request.auth != null && isAllowedDomain() && 
+        (isOwner(resource) || 
+         (resource.data.isSystemTemplate == true && request.auth.token.admin == true));
+    }
+    
+    // All other documents require auth and allowed domain (existing rule)
     match /{document=**} {
       allow read: if request.auth != null && isAllowedDomain();
       allow write: if false;

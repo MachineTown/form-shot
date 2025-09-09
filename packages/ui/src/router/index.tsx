@@ -9,6 +9,8 @@ const LoginPage = lazy(() => import('../pages/Login'));
 const DashboardPage = lazy(() => import('../pages/Dashboard'));
 const AnalysisPage = lazy(() => import('../pages/Analysis'));
 const PackageDetailPage = lazy(() => import('../pages/PackageDetail'));
+const ReportConfigurationPage = lazy(() => import('../pages/ReportConfiguration'));
+const ReportConfigurationListPage = lazy(() => import('../pages/ReportConfigurationList'));
 const NotFoundPage = lazy(() => import('../pages/NotFound'));
 
 // Wrap lazy components with Suspense
@@ -58,6 +60,18 @@ export const router = createBrowserRouter([
       {
         path: 'analysis/:customerId/:studyId/:packageName/:language',
         element: withSuspense(PackageDetailPage),
+      },
+      {
+        path: 'analysis/:customerId/:studyId/:packageName/report',
+        element: withSuspense(ReportConfigurationPage),
+      },
+      {
+        path: 'analysis/:customerId/:studyId/:packageName/report/:configId',
+        element: withSuspense(ReportConfigurationPage),
+      },
+      {
+        path: 'analysis/:customerId/:studyId/:packageName/reports',
+        element: withSuspense(ReportConfigurationListPage),
       },
       {
         path: '*',

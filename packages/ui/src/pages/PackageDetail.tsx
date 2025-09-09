@@ -1,12 +1,15 @@
-import { useParams } from 'react-router-dom';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Box, Typography, CircularProgress, Button, Stack } from '@mui/material';
 import { useMemo } from 'react';
 import ScreenshotViewer from '../components/screenshots/ScreenshotViewer';
 import MultiLanguageScreenshotViewer from '../components/screenshots/MultiLanguageScreenshotViewer';
 import { useGetAnalysesQuery, SurveyAnalysis } from '../store/services/firestoreApi';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 const PackageDetail: React.FC = () => {
   const { customerId, studyId, packageName, language } = useParams();
+  const navigate = useNavigate();
 
   // Get all analyses for this package to check for multiple languages
   const { data: allAnalyses, isLoading: allAnalysesLoading } = useGetAnalysesQuery({
@@ -83,19 +86,48 @@ const PackageDetail: React.FC = () => {
     );
   }
 
+  const handleGenerateReport = () => {
+    navigate(`/analysis/${customerId}/${studyId}/${packageName}/report`);
+  };
+
+  const handleManageReports = () => {
+    navigate(`/analysis/${customerId}/${studyId}/${packageName}/reports`);
+  };
+
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        {customerId} / {studyId} / {packageName}
-        {!hasMultipleLanguages && ` / ${currentAnalysis.language.toUpperCase()}`}
-      </Typography>
-      
-      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        {hasMultipleLanguages 
-          ? `Available in ${availableLanguages.length} languages: ${availableLanguages.map(l => l.toUpperCase()).join(', ')}`
-          : new Date(currentAnalysis.analysisDate.toDate()).toLocaleString()
-        }
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            {customerId} / {studyId} / {packageName}
+            {!hasMultipleLanguages && ` / ${currentAnalysis.language.toUpperCase()}`}
+          </Typography>
+          
+          <Typography variant="subtitle1" color="text.secondary">
+            {hasMultipleLanguages 
+              ? `Available in ${availableLanguages.length} languages: ${availableLanguages.map(l => l.toUpperCase()).join(', ')}`
+              : new Date(currentAnalysis.analysisDate.toDate()).toLocaleString()
+            }
+          </Typography>
+        </Box>
+
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={handleManageReports}
+          >
+            Manage Reports
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AssessmentIcon />}
+            onClick={handleGenerateReport}
+          >
+            Generate Report
+          </Button>
+        </Stack>
+      </Stack>
 
       <Box sx={{ mt: 2 }}>
         {hasMultipleLanguages ? (

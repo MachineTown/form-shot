@@ -21,6 +21,10 @@ export class ScreenshotService {
     }
   }
 
+  private padNumber(num: number | string, length: number = 3): string {
+    return String(num).padStart(length, '0');
+  }
+
   async setDefaultViewport(page: Page): Promise<void> {
     await page.setViewport({
       width: this.defaultViewport.width,
@@ -129,7 +133,7 @@ export class ScreenshotService {
       await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
       // Take screenshot
-      const filename = `form${formIndex + 1}_entry_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${currentViewport.width}.png`;
+      const filename = `form${this.padNumber(formIndex + 1)}_entry_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${currentViewport.width}.png`;
       const screenshotPath = await this.saveScreenshot(page, filename, tuple, '#survey-body-container');
 
       // Restore original viewport
@@ -191,7 +195,7 @@ export class ScreenshotService {
       await new Promise(resolve => setTimeout(resolve, 500)); // Allow viewport to adjust
 
       // Take screenshot
-      const filename = `form${formIndex + 1}_exit_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${currentViewport.width}.png`;
+      const filename = `form${this.padNumber(formIndex + 1)}_exit_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${currentViewport.width}.png`;
       const screenshotPath = await this.saveScreenshot(page, filename, tuple, '#survey-body-container');
 
       // Restore original viewport
@@ -213,9 +217,20 @@ export class ScreenshotService {
 
   async takeQuestionScreenshot(page: Page, field: SurveyField, questionIndex: number, tuple: SurveyTuple, formIndex?: number): Promise<string | undefined> {
     try {
-      const questionNum = field.questionNumber && field.questionNumber.trim() 
-        ? field.questionNumber.replace(/\./g, '') 
-        : `s${questionIndex + 1}`;
+      // Extract numeric part from question number and pad it
+      let questionNumPadded: string;
+      if (field.questionNumber && field.questionNumber.trim()) {
+        // Extract all numbers from the question number (e.g., "1." -> "001", "2.3" -> "002_003")
+        const numbers = field.questionNumber.match(/\d+/g);
+        if (numbers) {
+          questionNumPadded = numbers.map(n => this.padNumber(parseInt(n))).join('_');
+        } else {
+          questionNumPadded = this.padNumber(questionIndex + 1);
+        }
+      } else {
+        questionNumPadded = this.padNumber(questionIndex + 1);
+      }
+      
       logger.debug(`Taking screenshot for question ${field.questionNumber}`);
 
       // Scroll question into view
@@ -270,7 +285,7 @@ export class ScreenshotService {
       const formNum = formIndex !== undefined ? formIndex + 1 : 1;
       const currentViewport = page.viewport();
       const width = currentViewport?.width || this.defaultViewport.width;
-      const filename = `form${formNum}_question${questionNum}_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${width}.png`;
+      const filename = `form${this.padNumber(formNum)}_question${questionNumPadded}_${tuple.customerId}_${tuple.studyId}_${tuple.language}_${width}.png`;
       const screenshotPath = await this.saveScreenshot(page, filename, tuple, field.cardBoxSelector);
 
       logger.debug(`Question screenshot saved: ${filename}`);

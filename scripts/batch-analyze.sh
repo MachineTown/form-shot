@@ -13,6 +13,7 @@ MAX_CONCURRENT_JOBS=10
 BACKGROUND_PIDS=()
 DOCKER_IMAGE="form-shot-runtime"
 PROCESS_TIMEOUT=3600  # 60 minutes per process
+SPAWN_DELAY=15  # Delay in seconds between spawning subprocesses
 
 # Performance tuning
 ENABLE_COMPRESSION=false  # Compress logs after completion
@@ -69,6 +70,7 @@ Arguments:
 Options:
   -j, --jobs NUM        Maximum concurrent jobs (default: $MAX_CONCURRENT_JOBS)
   -t, --timeout SECS    Timeout per process in seconds (default: $PROCESS_TIMEOUT)
+  -d, --delay SECS      Delay between spawning processes (default: $SPAWN_DELAY)
   -c, --compress        Compress log files after completion
   -m, --metrics         Enable performance metrics tracking
   -u, --upload          Upload successful analyses to Firestore (requires ~/firestore.json)
@@ -462,6 +464,7 @@ generate_summary_report() {
         echo "CONFIGURATION:"
         echo "  Max concurrent jobs: $MAX_CONCURRENT_JOBS"
         echo "  Process timeout: ${PROCESS_TIMEOUT}s"
+        echo "  Spawn delay: ${SPAWN_DELAY}s"
         echo "  Compression enabled: $ENABLE_COMPRESSION"
         echo "  Metrics enabled: $ENABLE_METRICS"
         echo "  Upload enabled: $ENABLE_UPLOAD"
@@ -529,6 +532,10 @@ parse_arguments() {
                 ;;
             -t|--timeout)
                 PROCESS_TIMEOUT="$2"
+                shift 2
+                ;;
+            -d|--delay)
+                SPAWN_DELAY="$2"
                 shift 2
                 ;;
             -c|--compress)
@@ -627,6 +634,7 @@ main() {
     
     # Execute analyses in parallel
     log_info "Starting parallel execution (max concurrent: $MAX_CONCURRENT_JOBS)"
+    log_info "Spawn delay between processes: ${SPAWN_DELAY}s"
     
     local count=0
     for config in "${configurations[@]}"; do
@@ -639,6 +647,12 @@ main() {
         
         # Execute analysis in background
         execute_analysis_background "$width" "$tuple" "$url" "$log_filename"
+        
+        # Add delay between spawns to stagger load (except after the last one)
+        if [[ $count -lt $valid_lines ]]; then
+            log_info "Waiting ${SPAWN_DELAY}s before spawning next process (staggering load)..."
+            sleep $SPAWN_DELAY
+        fi
     done
     
     # Wait for all processes to complete
