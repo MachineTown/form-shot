@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 const PDFDocument = require('pdfkit');
 import * as https from 'https';
 import * as http from 'http';
+import * as path from 'path';
 
 interface ReportConfiguration {
   id: string;
@@ -133,6 +134,9 @@ export class PDFGenerator {
     return new Promise(async (resolve, reject) => {
       const chunks: Buffer[] = [];
       
+      // Path to the Unicode font
+      const fontPath = path.join(__dirname, '../fonts/DejaVuSans.ttf');
+      
       // Create PDF document
       const doc = new PDFDocument({
         size: config.pageSize || 'A4',
@@ -145,6 +149,15 @@ export class PDFGenerator {
           CreationDate: new Date()
         }
       });
+      
+      // Register and use Unicode font for Arabic support
+      try {
+        doc.registerFont('DejaVuSans', fontPath);
+        doc.font('DejaVuSans'); // Set as default font
+      } catch (error) {
+        console.warn('Could not load Unicode font, falling back to default:', error);
+        // Continue with default font if custom font fails to load
+      }
 
       // Collect PDF data
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -175,14 +188,16 @@ export class PDFGenerator {
     analysisData: AnalysisData
   ): void {
     // Title
-    doc.fontSize(24)
+    doc.font('DejaVuSans')
+       .fontSize(24)
        .text(config.name, { align: 'center' });
     
     doc.moveDown();
     
     // Description
     if (config.description) {
-      doc.fontSize(14)
+      doc.font('DejaVuSans')
+         .fontSize(14)
          .fillColor('#666666')
          .text(config.description, { align: 'center' });
     }
@@ -190,7 +205,8 @@ export class PDFGenerator {
     doc.moveDown(2);
     
     // Metadata
-    doc.fontSize(12)
+    doc.font('DejaVuSans')
+       .fontSize(12)
        .fillColor('#000000')
        .text(`Customer: ${analysisData.customerId}`)
        .text(`Study: ${analysisData.studyId}`)
@@ -212,12 +228,14 @@ export class PDFGenerator {
     analysisData: AnalysisData
   ): Promise<void> {
     // Form header
-    doc.fontSize(16)
+    doc.font('DejaVuSans')
+       .fontSize(16)
        .fillColor('#000000')
        .text(`Form ${form.formIndex + 1}: ${form.longTitle}`);
     
     if (form.shortName) {
-      doc.fontSize(12)
+      doc.font('DejaVuSans')
+         .fontSize(12)
          .fillColor('#666666')
          .text(`(${form.shortName})`);
     }
@@ -239,7 +257,8 @@ export class PDFGenerator {
         });
       } catch (error) {
         console.error(`Failed to add screenshot for form ${form.id}:`, error);
-        doc.fontSize(10)
+        doc.font('DejaVuSans')
+           .fontSize(10)
            .fillColor('#ff0000')
            .text('Screenshot unavailable');
       }
@@ -248,6 +267,7 @@ export class PDFGenerator {
     // Add metadata if configured
     if (config.includeMetadata) {
       doc.moveDown()
+         .font('DejaVuSans')
          .fontSize(10)
          .fillColor('#666666')
          .text(`Questions: ${form.questionCount}`);
