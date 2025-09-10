@@ -19,6 +19,8 @@ import {
   useDeleteConfigurationMutation,
   useCreateConfigurationMutation,
   useSetDefaultConfigurationMutation,
+  useGenerateReportMutation,
+  useGetGenerationJobQuery,
 } from '../store/services/reportApi';
 import { ReportConfiguration } from '@form-shot/shared/src/types/report-types';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,17 +46,29 @@ const ReportConfigurationList: React.FC = () => {
   const [deleteConfiguration] = useDeleteConfigurationMutation();
   const [createConfiguration] = useCreateConfigurationMutation();
   const [setDefaultConfiguration] = useSetDefaultConfigurationMutation();
+  const [generateReport, { isLoading: isGenerating }] = useGenerateReportMutation();
   
-  const handleLoad = (config: ReportConfiguration) => {
-    // Navigate to report generation page
-    // TODO: Implement report generation page/dialog
-    // For now, show a message that this feature is coming soon
-    setSnackbarMessage('Report generation feature coming soon');
-    setSnackbarSeverity('info');
-    setSnackbarOpen(true);
-    
-    // Future implementation would navigate to:
-    // navigate(`/analysis/${customerId}/${studyId}/${packageName}/generate/${config.id}`);
+  const handleLoad = async (config: ReportConfiguration) => {
+    try {
+      setSnackbarMessage('Starting report generation...');
+      setSnackbarSeverity('info');
+      setSnackbarOpen(true);
+      
+      const result = await generateReport(config.id).unwrap();
+      
+      setSnackbarMessage(`Report generation started. Job ID: ${result.jobId}`);
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+      
+      // TODO: Add job status tracking and download links
+      // For now, users can check the Firestore console for job status
+      
+    } catch (error: any) {
+      console.error('Failed to generate report:', error);
+      setSnackbarMessage(error?.data?.error || 'Failed to generate report');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
   };
   
   const handleEdit = (config: ReportConfiguration) => {
@@ -178,6 +192,7 @@ const ReportConfigurationList: React.FC = () => {
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
             onSetDefault={handleSetDefault}
+            isLoading={isGenerating}
           />
         ) : (
           <Alert severity="info">

@@ -2,8 +2,10 @@ import { onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 import { DownloadService } from "./services/downloadService";
 import { DownloadRequest, DownloadResponse } from "./types/download";
+import { PDFGenerator } from "./services/pdf-generator";
 
 // Initialize Firebase Admin SDK
 initializeApp();
@@ -426,6 +428,145 @@ export const downloadFile = onRequest({
 
     response.status(500).json({
       error: "Failed to download file",
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Cloud Function to generate PDF reports from saved configurations
+ */
+export const generateReport = onRequest({
+  cors: true,
+  timeoutSeconds: 540, // 9 minutes (maximum for Cloud Functions)
+  memory: "2GiB"
+}, async (request, response) => {
+  const startTime = Date.now();
+  
+  try {
+    logger.info("Generate report function called", {
+      method: request.method,
+      timestamp: new Date().toISOString()
+    });
+
+    // Authenticate user
+    const user = await authenticateUser(request);
+    if (!user) {
+      response.status(401).json({
+        error: "Authentication required",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Validate request body
+    const { configurationId } = request.body;
+    
+    if (!configurationId) {
+      response.status(400).json({
+        error: "Missing required parameter: configurationId",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Get Firestore instance
+    const firestore = getFirestore();
+    
+    // Verify user has access to the configuration
+    const configDoc = await firestore
+      .collection('report-configurations')
+      .doc(configurationId)
+      .get();
+    
+    if (!configDoc.exists) {
+      response.status(404).json({
+        error: "Configuration not found",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    const config = configDoc.data();
+    
+    // Check if user owns the configuration or has shared access
+    if (config?.createdBy !== user.email && 
+        (!config?.sharedWith || !config.sharedWith.includes(user.email))) {
+      response.status(403).json({
+        error: "Access denied to this configuration",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Create a job entry in Firestore
+    const jobData = {
+      configurationId,
+      analysisId: `${config.customerId}_${config.studyId}_${config.packageName}`,
+      requestedBy: user.email,
+      requestedAt: new Date(),
+      requestSource: 'api',
+      status: 'pending',
+      languages: config.selectedLanguages,
+      metadata: {
+        configName: config.name,
+        customerId: config.customerId,
+        studyId: config.studyId,
+        packageName: config.packageName
+      }
+    };
+    
+    const jobRef = await firestore
+      .collection('report-generation-jobs')
+      .add(jobData);
+    
+    const jobId = jobRef.id;
+    
+    logger.info("Created job entry", {
+      jobId,
+      configurationId,
+      languages: config.selectedLanguages
+    });
+
+    // Start PDF generation asynchronously
+    // In a production environment, you might want to use Pub/Sub or Cloud Tasks
+    // For now, we'll process it directly
+    const pdfGenerator = new PDFGenerator();
+    
+    // Don't await - let it run asynchronously
+    pdfGenerator.generateReports(configurationId, jobId)
+      .then(() => {
+        logger.info("PDF generation completed", {
+          jobId,
+          processingTimeMs: Date.now() - startTime
+        });
+      })
+      .catch((error) => {
+        logger.error("PDF generation failed", {
+          jobId,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+      });
+
+    // Return job ID immediately
+    response.status(202).json({
+      jobId,
+      status: 'pending',
+      message: 'Report generation started',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error("Generate report function failed", {
+      error: error instanceof Error ? error.message : String(error),
+      processingTimeMs: Date.now() - startTime,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    response.status(500).json({
+      error: "Failed to start report generation",
+      details: error instanceof Error ? error.message : String(error),
       timestamp: new Date().toISOString()
     });
   }

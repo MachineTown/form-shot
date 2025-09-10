@@ -801,6 +801,52 @@ export const reportApi = createApi({
         }
       },
     }),
+
+    // Generate PDF Report
+    generateReport: builder.mutation<
+      { jobId: string; status: string; message: string },
+      string // configurationId
+    >({
+      async queryFn(configurationId) {
+        try {
+          const user = auth.currentUser;
+          if (!user) {
+            return { error: { error: 'User not authenticated' } };
+          }
+
+          // Get ID token for authentication
+          const idToken = await user.getIdToken();
+          
+          // Determine the Cloud Function URL based on environment
+          const isEmulator = window.location.hostname === 'localhost';
+          const functionUrl = isEmulator
+            ? 'http://localhost:5001/castor-form-shot/us-central1/generateReport'
+            : 'https://generatereport-abcdefghij-uc.a.run.app'; // TODO: Update with actual production URL
+          
+          // Call the Cloud Function
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ configurationId })
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+
+          const result = await response.json();
+          return { data: result };
+        } catch (error: any) {
+          console.error('Failed to generate report:', error);
+          return { error: { error: error?.message || String(error) } };
+        }
+      },
+      invalidatesTags: ['GenerationJob'],
+    }),
   }),
 });
 
@@ -842,4 +888,5 @@ export const {
   useBatchDeleteConfigurationsMutation,
   useGetAvailableFormsQuery,
   useGetAvailableLanguagesQuery,
+  useGenerateReportMutation,
 } = reportApi;

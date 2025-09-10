@@ -120,22 +120,30 @@ This document tracks the implementation of the PDF report generation feature for
 
 ---
 
-### Milestone 5: PDF Generation Backend
-**Status**: ⏳ Not Started  
-**Target Date**: TBD
+### Milestone 5: PDF Generation Backend (Cloud Functions)
+**Status**: ✅ Completed  
+**Completed Date**: 2025-09-10
 
 #### Tasks
-- [ ] Install jsPDF and html2canvas
-- [ ] Create generate-report CLI command
-- [ ] Build PDF generation service
-- [ ] Implement Cloud Function for async generation
-- [ ] Setup Cloud Storage integration
+- [x] Install PDFKit for server-side PDF generation
+- [x] Build PDF generation service (pdf-generator.ts)
+- [x] Implement Cloud Function for async generation
+- [x] Setup Cloud Storage integration with signed URLs
+- [x] Create job tracking in Firestore
 
 #### Deliverables
 - PDF generation from on-exit screenshots
-- Multi-language PDF support
-- Cloud Storage upload with signed URLs
+- Multi-language PDF support (one PDF per language)
+- Cloud Storage upload with signed URLs (24-hour expiration)
 - Async processing via Cloud Functions
+- Job status tracking in report-generation-jobs collection
+
+#### Implementation Notes
+- Used PDFKit instead of jsPDF for better server-side performance
+- Cloud Function `generateReport` handles authentication and job creation
+- PDFGenerator service fetches screenshots and generates PDFs
+- Implemented proper error handling and job status updates
+- Returns job ID immediately for async tracking
 
 ---
 
