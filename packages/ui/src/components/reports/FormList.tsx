@@ -108,6 +108,8 @@ const FormList: React.FC<FormListProps> = ({
       const newIndex = sortedForms.findIndex((form) => form.id === over.id);
 
       const newSortedForms = arrayMove(sortedForms, oldIndex, newIndex);
+      // Only pass the new order of ALL forms, don't change selection
+      // The parent component will handle filtering based on selection
       onOrderChange(newSortedForms.map(f => f.id));
     }
 

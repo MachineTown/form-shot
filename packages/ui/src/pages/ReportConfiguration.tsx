@@ -124,7 +124,7 @@ const ReportConfiguration: React.FC = () => {
   }, [availableLanguages, configId]);
 
   const handleSaveConfig = async (name: string, description: string, isDefault: boolean) => {
-    if (formOrder.length === 0) {
+    if (selectedForms.length === 0) {
       const errorMsg = 'Please select at least one form';
       setSnackbarMessage(errorMsg);
       setSnackbarSeverity('error');
@@ -141,13 +141,16 @@ const ReportConfiguration: React.FC = () => {
     }
 
     try {
+      // Only include selected forms in the saved configuration
+      const selectedFormOrder = formOrder.filter(id => selectedForms.includes(id));
+      
       const configData = {
         customerId: customerId!,
         studyId: studyId!,
         packageName: packageName!,
         name,
         description,
-        formOrder,
+        formOrder: selectedFormOrder,
         selectedLanguages,
         includeMetadata,
         pageOrientation,
@@ -201,7 +204,11 @@ const ReportConfiguration: React.FC = () => {
   };
 
   const handleFormOrderChange = (newOrder: string[]) => {
+    // Only update the order, don't change selection
+    // newOrder contains ALL forms in their new positions
+    // We need to maintain the current selection
     setFormOrder(newOrder);
+    // Don't change selectedForms here - maintain the current selection
   };
 
   const handleLanguageChange = (languages: string[]) => {
@@ -361,7 +368,7 @@ const ReportConfiguration: React.FC = () => {
             variant="contained"
             startIcon={<SaveIcon />}
             onClick={() => setSaveDialogOpen(true)}
-            disabled={creating || updating || formOrder.length === 0 || selectedLanguages.length === 0}
+            disabled={creating || updating || selectedForms.length === 0 || selectedLanguages.length === 0}
           >
             {creating || updating ? 'Saving...' : 'Save Configuration'}
           </Button>
