@@ -437,7 +437,7 @@ export const downloadFile = onRequest({
  * Cloud Function to generate PDF reports from saved configurations
  */
 export const generateReport = onRequest({
-  cors: true,
+  cors: ['https://castor-form-shot.web.app', 'https://castor-form-shot.firebaseapp.com', 'http://localhost:5173', 'http://localhost:5174'],
   timeoutSeconds: 540, // 9 minutes (maximum for Cloud Functions)
   memory: "2GiB"
 }, async (request, response) => {

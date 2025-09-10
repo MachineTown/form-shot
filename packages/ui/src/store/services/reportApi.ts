@@ -818,10 +818,10 @@ export const reportApi = createApi({
           const idToken = await user.getIdToken();
           
           // Determine the Cloud Function URL based on environment
-          const isEmulator = window.location.hostname === 'localhost';
+          const isEmulator = import.meta.env.VITE_USE_EMULATORS === 'true';
           const functionUrl = isEmulator
             ? 'http://localhost:5001/castor-form-shot/us-central1/generateReport'
-            : 'https://generatereport-abcdefghij-uc.a.run.app'; // TODO: Update with actual production URL
+            : 'https://us-central1-castor-form-shot.cloudfunctions.net/generateReport';
           
           // Call the Cloud Function
           const response = await fetch(functionUrl, {
