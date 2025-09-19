@@ -292,6 +292,14 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
           const nextButton = navButtons.find(b => b.type === 'next' && b.isEnabled);
           
           if (nextButton) {
+            // Move mouse to safe position before navigation screenshot
+            try {
+              await page.mouse.move(0, 0);
+              await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (error) {
+              logger.debug('Failed to move mouse to safe position, continuing:', error);
+            }
+            
             // Take screenshot before navigation
             const beforeNavPath = join(runOutputDir, `before_nav_form${formIndex + 1}_to_form${formIndex + 2}.png`) as `${string}.png`;
             await page.screenshot({ 
@@ -304,6 +312,14 @@ export async function runTests(options: TestRunOptions): Promise<TestRunResult> 
             await formNavigator.clickNavigationButtonWithRetry(page, 'next', 1000);
             
             // Navigation retry logic will handle validation modals and form transition verification
+            // Move mouse to safe position before after-navigation screenshot
+            try {
+              await page.mouse.move(0, 0);
+              await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (error) {
+              logger.debug('Failed to move mouse to safe position, continuing:', error);
+            }
+            
             // Just take a screenshot of the new state
             const afterNavPath = join(runOutputDir, `after_nav_to_form${formIndex + 2}.png`) as `${string}.png`;
             await page.screenshot({ 
@@ -1266,6 +1282,14 @@ function padNumber(num: number | string, length: number = 3): string {
 }
 
 async function captureFieldScreenshot(page: any, field: any, testCase: any, outputDir: string): Promise<string> {
+  // Move mouse to safe position to avoid hover effects
+  try {
+    await page.mouse.move(0, 0);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } catch (error) {
+    logger.debug('Failed to move mouse to safe position, continuing:', error);
+  }
+  
   const currentViewport = page.viewport();
   const width = currentViewport?.width || 767;
   

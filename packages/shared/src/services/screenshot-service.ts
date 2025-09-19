@@ -21,6 +21,16 @@ export class ScreenshotService {
     }
   }
 
+  private async moveMouseToSafePosition(page: Page): Promise<void> {
+    try {
+      await page.mouse.move(0, 0);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      logger.debug('Mouse moved to safe position (0, 0) before screenshot');
+    } catch (error) {
+      logger.debug('Failed to move mouse to safe position, continuing:', error);
+    }
+  }
+
   private padNumber(num: number | string, length: number = 3): string {
     return String(num).padStart(length, '0');
   }
@@ -89,6 +99,9 @@ export class ScreenshotService {
     try {
       logger.info(`Taking on-entry screenshot for form ${formIndex + 1}`);
       
+      // Move mouse to safe position before screenshot
+      await this.moveMouseToSafePosition(page);
+      
       // Get current viewport
       const currentViewport = page.viewport();
       if (!currentViewport) {
@@ -152,6 +165,9 @@ export class ScreenshotService {
   async takeOnExitScreenshot(page: Page, form: SurveyForm, formIndex: number, tuple: SurveyTuple): Promise<string | undefined> {
     try {
       logger.info(`Taking on-exit screenshot for form ${formIndex + 1}`);
+      
+      // Move mouse to safe position before screenshot
+      await this.moveMouseToSafePosition(page);
       
       // Get current viewport
       const currentViewport = page.viewport();
@@ -217,6 +233,9 @@ export class ScreenshotService {
 
   async takeQuestionScreenshot(page: Page, field: SurveyField, questionIndex: number, tuple: SurveyTuple, formIndex?: number): Promise<string | undefined> {
     try {
+      // Move mouse to safe position before screenshot
+      await this.moveMouseToSafePosition(page);
+      
       // Extract numeric part from question number and pad it
       let questionNumPadded: string;
       if (field.questionNumber && field.questionNumber.trim()) {
