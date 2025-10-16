@@ -218,7 +218,7 @@ execute_upload_background() {
             -v "$OUTPUT_DIR:/app/output" \
             -v ~/firestore.json:/app/firestore.json \
             "$DOCKER_IMAGE" \
-            upload "$analysis_file" 2>&1
+            upload "$analysis_file" --leave 2>&1
         
         local exit_code=$?
         
